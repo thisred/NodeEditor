@@ -59,7 +59,7 @@ public class PrintActionNode : NodeBase
     {
         var message = GetStringValue(MessageInput);
         var output = string.IsNullOrEmpty(Prefix) ? message : $"[{Prefix}] {message}";
-        System.Console.WriteLine(output);
+        ExecutionLogger.Log(output, nameof(PrintActionNode));
     }
 
     private static string GetStringValue(NodePort port)
@@ -105,7 +105,7 @@ public class SetVariableActionNode : NodeBase
         }
 
         GraphVariableStore.Set(VariableName, StoredValue);
-        System.Console.WriteLine($"[SetVariable] {VariableName} = {StoredValue}");
+        ExecutionLogger.Log($"[SetVariable] {VariableName} = {StoredValue}", nameof(SetVariableActionNode));
     }
 }
 

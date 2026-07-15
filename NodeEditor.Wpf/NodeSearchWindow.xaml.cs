@@ -10,12 +10,13 @@ using NodeEditor.Core.Discovery;
 namespace NodeEditor.Wpf;
 
 /// <summary>
-/// 节点创建弹窗 — 两级选择：先选分类，再选节点（仅显示名称）。
-/// 使用 ShowDialog() 模态显示，避免 Deactivated 崩溃问题。
+/// 节点创建弹窗 — 分类浏览 + 全局搜索。
+/// 空搜索时显示分类列表；输入文字时搜索所有节点。
 /// </summary>
 public partial class NodeSearchWindow : Window
 {
     private readonly Dictionary<string, List<NodeEntry>> _byCategory;
+    private readonly List<NodeEntry> _allNodes;
     private readonly Action<string>? _onSelected;
     private string? _selectedCategory;
 
@@ -24,11 +25,15 @@ public partial class NodeSearchWindow : Window
         InitializeComponent();
         _onSelected = onSelected;
 
-        _byCategory = descriptors
-            .GroupBy(d => string.IsNullOrEmpty(d.Category) ? "未分类" : d.Category)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderBy(d => d.DisplayName).Select(d => new NodeEntry(d)).ToList());
+        var entries = descriptors
+            .OrderBy(d => d.DisplayName)
+            .Select(d => new NodeEntry(d))
+            .ToList();
+
+        _allNodes = entries;
+        _byCategory = entries
+            .GroupBy(e => string.IsNullOrEmpty(e.Descriptor.Category) ? "未分类" : e.Descriptor.Category)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         ShowCategories();
         Loaded += (_, _) => SearchBox.Focus();
@@ -41,10 +46,11 @@ public partial class NodeSearchWindow : Window
         _selectedCategory = null;
         TitleText.Text = "选择分类";
         BackButton.Visibility = Visibility.Collapsed;
+        CategoryList.SelectedIndex = -1;
         CategoryList.Visibility = Visibility.Visible;
         NodeList.Visibility = Visibility.Collapsed;
         SearchBox.Text = "";
-        FilterCurrentView();
+        FilterView();
         CategoryList.Focus();
     }
 
@@ -69,10 +75,11 @@ public partial class NodeSearchWindow : Window
         _selectedCategory = category;
         TitleText.Text = category;
         BackButton.Visibility = Visibility.Visible;
+        CategoryList.SelectedIndex = -1;
         CategoryList.Visibility = Visibility.Collapsed;
         NodeList.Visibility = Visibility.Visible;
         SearchBox.Text = "";
-        FilterCurrentView();
+        FilterView();
         NodeList.Focus();
     }
 
@@ -86,15 +93,13 @@ public partial class NodeSearchWindow : Window
     /// <summary>单击创建节点（Preview 事件，在视觉树变化前触发）</summary>
     private void NodeList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // 从点击的元素向上查找 ListBoxItem
         DependencyObject? dep = e.OriginalSource as DependencyObject;
         while (dep != null && dep is not ListBoxItem)
             dep = VisualTreeHelper.GetParent(dep);
 
         if (dep is ListBoxItem item && item.DataContext is NodeEntry entry)
         {
-            e.Handled = true; // 阻止事件继续传播
-            // 延迟到事件处理完毕后再关闭窗口，避免在 Preview 事件中同步关闭导致鼠标状态混乱
+            e.Handled = true;
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 _onSelected?.Invoke(entry.Descriptor.TypeId);
@@ -106,7 +111,6 @@ public partial class NodeSearchWindow : Window
     private void CreateSelected()
     {
         NodeEntry? entry = NodeList.SelectedItem as NodeEntry;
-        // 无选中时回退到第一项（供 Enter 键使用）
         if (entry == null && NodeList.Items.Count > 0)
             entry = NodeList.Items[0] as NodeEntry;
 
@@ -117,7 +121,7 @@ public partial class NodeSearchWindow : Window
         }
     }
 
-    private void BackButton_Click(object sender, RoutedEventArgs e)
+    private void BackButton_Click(object sender, MouseButtonEventArgs e)
     {
         ShowCategories();
     }
@@ -126,35 +130,52 @@ public partial class NodeSearchWindow : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        FilterCurrentView();
+        FilterView();
     }
 
-    private void FilterCurrentView()
+    private void FilterView()
     {
         var text = SearchBox.Text;
 
+        if (!string.IsNullOrEmpty(text))
+        {
+            // 有搜索文字 → 搜索所有节点，隐藏分类列表
+            CategoryList.Visibility = Visibility.Collapsed;
+            NodeList.Visibility = Visibility.Visible;
+            var nodes = _allNodes
+                .Where(n => n.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            NodeList.ItemsSource = nodes;
+            StatusText.Text = nodes.Count > 0
+                ? $"{nodes.Count} 个节点 · 点击创建 · Esc 取消"
+                : "无匹配节点";
+            return;
+        }
+
+        // 空搜索 → 恢复当前层级视图
         if (_selectedCategory == null)
         {
-            // 过滤分类
+            // 分类视图
+            CategoryList.Visibility = Visibility.Visible;
+            NodeList.Visibility = Visibility.Collapsed;
             var categories = _byCategory.Keys
-                .Where(k => k.Contains(text, StringComparison.OrdinalIgnoreCase))
                 .OrderBy(k => k)
                 .ToList();
             CategoryList.ItemsSource = categories;
             StatusText.Text = categories.Count > 0
                 ? $"{categories.Count} 个分类 · 点击进入 · Esc 取消"
-                : "无匹配分类";
+                : "无分类";
         }
         else
         {
-            // 过滤节点
-            var nodes = _byCategory[_selectedCategory]
-                .Where(n => n.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            // 分类内节点视图
+            CategoryList.Visibility = Visibility.Collapsed;
+            NodeList.Visibility = Visibility.Visible;
+            var nodes = _byCategory[_selectedCategory];
             NodeList.ItemsSource = nodes;
             StatusText.Text = nodes.Count > 0
-                ? $"{nodes.Count} 个节点 · 双击创建 · Backspace 返回 · Esc 取消"
-                : "无匹配节点";
+                ? $"{nodes.Count} 个节点 · 点击创建 · Backspace 返回 · Esc 取消"
+                : "无节点";
         }
     }
 
@@ -165,7 +186,7 @@ public partial class NodeSearchWindow : Window
         switch (e.Key)
         {
             case Key.Enter:
-                if (_selectedCategory != null)
+                if (NodeList.Visibility == Visibility.Visible)
                     CreateSelected();
                 else if (CategoryList.SelectedItem is string cat)
                     EnterCategory(cat);
@@ -176,7 +197,6 @@ public partial class NodeSearchWindow : Window
                 e.Handled = true;
                 break;
             case Key.Back:
-                // 搜索框为空时 Backspace 返回分类
                 if (_selectedCategory != null && string.IsNullOrEmpty(SearchBox.Text))
                 {
                     ShowCategories();

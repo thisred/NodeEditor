@@ -12,18 +12,31 @@
         <!-- 节点模板 -->
         <DataTemplate DataType="{x:Type vm:NodeViewModel}">
             <Border Width="180" Margin="0"
-                    BorderBrush="#555" BorderThickness="1"
                     CornerRadius="5"
                     MouseLeftButtonDown="Node_MouseLeftButtonDown">
-                <Border.Background>
-                    <SolidColorBrush Color="#2D2D2D" Opacity="0.97" />
-                </Border.Background>
                 <Border.Style>
                     <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="#555" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="Background">
+                            <Setter.Value>
+                                <SolidColorBrush Color="#2D2D2D" Opacity="0.97" />
+                            </Setter.Value>
+                        </Setter>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                 <Setter Property="BorderBrush" Value="#007ACC" />
                                 <Setter Property="BorderThickness" Value="2" />
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#333F5A" Opacity="0.97" />
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect Color="#007ACC" BlurRadius="12" ShadowDepth="0" Opacity="0.8" />
+                                    </Setter.Value>
+                                </Setter>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -142,176 +155,250 @@
     </Window.InputBindings>
 
     <DockPanel>
+        <!-- 菜单栏 -->
+        <Menu DockPanel.Dock="Top" FontSize="12">
+            <MenuItem Header="文件(_F)">
+                <MenuItem Header="导出 JSON..." Command="{Binding ExportCommand}" />
+                <MenuItem Header="导入 JSON..." Command="{Binding ImportCommand}" />
+                <Separator />
+                <MenuItem Header="清空画布" Command="{Binding ClearCommand}" />
+            </MenuItem>
+            <MenuItem Header="编辑(_E)">
+                <MenuItem Header="复制" Click="Copy_Click" InputGestureText="Ctrl+C" />
+                <MenuItem Header="粘贴" Click="Paste_Click" InputGestureText="Ctrl+V" />
+                <Separator />
+                <MenuItem Header="删除选中" Command="{Binding DeleteSelectedCommand}" InputGestureText="Del" />
+            </MenuItem>
+            <MenuItem Header="帮助(_H)">
+                <MenuItem Header="关于 Node Editor" Click="About_Click" />
+            </MenuItem>
+        </Menu>
+
         <!-- 顶部工具栏 -->
         <Border DockPanel.Dock="Top" Background="#2D2D2D" Padding="8,4">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Node Editor" Foreground="#89DCEB" FontSize="16" FontWeight="Bold"
-                           VerticalAlignment="Center" Margin="0,0,20,0" />
-                <Button Content="导出 JSON" Command="{Binding ExportCommand}"
-                        Margin="0,0,8,0" Padding="12,4" Background="#3A3A3A" Foreground="#CCC" />
-                <Button Content="导入 JSON" Command="{Binding ImportCommand}"
-                        Margin="0,0,8,0" Padding="12,4" Background="#3A3A3A" Foreground="#CCC" />
-                <Button Content="执行图" Command="{Binding ExecuteCommand}"
-                        Margin="0,0,8,0" Padding="12,4" Background="#3A6B3A" Foreground="#FFF" />
-                <Button Content="清空" Command="{Binding ClearCommand}"
-                        Margin="0,0,8,0" Padding="12,4" Background="#6B3A3A" Foreground="#FFF" />
+            <Grid>
+                <Button Command="{Binding ExecuteCommand}"
+                        HorizontalAlignment="Center"
+                        Width="25" Height="20"
+                        Background="#3A6B3A" Foreground="#FFF"
+                        FontSize="12" FontWeight="Normal"
+                        ToolTip="Play"
+                        Content="▶" />
                 <TextBlock x:Name="StatusText" Foreground="#888" FontSize="11"
-                           VerticalAlignment="Center" Margin="16,0,0,0" />
-            </StackPanel>
+                           VerticalAlignment="Center" HorizontalAlignment="Right" />
+            </Grid>
         </Border>
 
-        <!-- 主区域：两栏（画布 + 属性面板） -->
+        <!-- 主区域 + 底部日志面板（可拖拽调整大小） -->
         <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="270" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="150" x:Name="LogRow" />
+            </Grid.RowDefinitions>
 
-            <!-- 画布 -->
-            <Grid Grid.Column="0" x:Name="CanvasArea"
-                  Background="#1E1E1E"
-                  ClipToBounds="True"
-                  MouseLeftButtonDown="CanvasArea_MouseLeftButtonDown"
-                  MouseLeftButtonUp="CanvasArea_MouseLeftButtonUp"
-                  MouseMove="CanvasArea_MouseMove"
-                  MouseWheel="CanvasArea_MouseWheel"
-                  MouseRightButtonDown="CanvasArea_MouseRightButtonDown">
-                <!-- 画布变换容器 -->
-                <Grid x:Name="CanvasContainer" RenderTransformOrigin="0,0">
-                    <Grid.RenderTransform>
-                        <TransformGroup>
-                            <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
-                            <TranslateTransform X="{Binding PanX}" Y="{Binding PanY}" />
-                        </TransformGroup>
-                    </Grid.RenderTransform>
+            <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                          Background="#2D2D2D" ResizeBehavior="PreviousAndNext"
+                          ResizeDirection="Rows" x:Name="LogSplitter"
+                          Cursor="SizeNS" />
 
-                    <!-- 连线层 -->
-                    <ItemsControl ItemsSource="{Binding Connections}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <Canvas IsHitTestVisible="True" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-
-                    <!-- 临时连线（拖拽中） -->
-                    <Path Data="{Binding PendingPathData}"
-                          Stroke="#FFD700" StrokeThickness="2"
-                          StrokeDashArray="4,2"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          Visibility="{Binding HasPendingConnection, Converter={StaticResource BoolToVisibility}}"
-                          IsHitTestVisible="False" />
-
-                    <!-- 节点层 -->
-                    <ItemsControl ItemsSource="{Binding Nodes}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <Canvas />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemContainerStyle>
-                            <Style TargetType="ContentPresenter">
-                                <Setter Property="Canvas.Left" Value="{Binding X}" />
-                                <Setter Property="Canvas.Top" Value="{Binding Y}" />
-                            </Style>
-                        </ItemsControl.ItemContainerStyle>
-                    </ItemsControl>
-                </Grid>
-
-                <!-- 选框层（屏幕坐标，不随画布缩放） -->
-                <Canvas IsHitTestVisible="False">
-                    <Rectangle x:Name="SelectionRect"
-                               Stroke="#3399FF" StrokeThickness="1.5"
-                               Fill="#3399FF" Opacity="0.15"
-                               Visibility="Collapsed" />
-                </Canvas>
-
-                <!-- 操作提示 -->
-                <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                        Margin="12,12,0,0" Background="#2D2D2D" CornerRadius="4"
-                        Padding="10,5" Opacity="0.7">
-                    <TextBlock Foreground="#777" FontSize="11">
-                        <Run Text="右键创建节点 · 左键拖拽框选 · Ctrl+点击多选 · Ctrl+C/V 复制粘贴 · Del 删除 · F11 全屏" />
-                    </TextBlock>
-                </Border>
-
-                <!-- 缩放指示器 -->
-                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                        Margin="0,12,12,0" Background="#2D2D2D" CornerRadius="4"
-                        Padding="8,3" Opacity="0.8">
-                    <TextBlock Foreground="#888" FontSize="11">
-                        <Run Text="缩放: " />
-                        <Run Text="{Binding Zoom, StringFormat=P0}" />
-                    </TextBlock>
-                </Border>
-
-                <!-- 小地图 -->
-                <Border x:Name="MinimapBorder"
-                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                        Margin="0,0,12,12" Width="180" Height="120"
-                        Background="#252526" CornerRadius="4"
-                        BorderBrush="#3F3F3F" BorderThickness="1"
-                        Opacity="0.9" ClipToBounds="True"
-                        MouseLeftButtonDown="Minimap_MouseLeftButtonDown"
-                        MouseMove="Minimap_MouseMove"
-                        MouseLeftButtonUp="Minimap_MouseLeftButtonUp">
-                    <Canvas x:Name="MinimapCanvas" />
-                </Border>
-            </Grid>
-
-            <!-- 右栏：属性面板 -->
-            <Border Grid.Column="1" Background="#252526" BorderBrush="#3F3F3F" BorderThickness="1,0,0,0">
+            <!-- 底部日志面板 -->
+            <Border Grid.Row="2" x:Name="LogPanel" Background="#1E1E1E"
+                    BorderBrush="#3F3F3F" BorderThickness="0,1,0,0">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="属性" Foreground="#89DCEB"
-                               FontSize="13" FontWeight="SemiBold" Margin="12,10,0,6" />
-
-                    <!-- 选中节点信息 -->
-                    <StackPanel DockPanel.Dock="Top" Margin="12,0,12,8"
-                                Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="{Binding SelectedNode.DisplayName}"
-                                   Foreground="#FFF" FontSize="14" FontWeight="Bold" />
-                        <TextBlock Text="{Binding SelectedNode.Category}"
-                                   Foreground="#888" FontSize="11" Margin="0,2,0,0" />
-                        <TextBlock Text="{Binding SelectedNode.Description}"
-                                   Foreground="#777" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
-                        <Separator Margin="0,8" Background="#3F3F3F" />
-                        <TextBlock Text="可编辑属性" Foreground="#AAA" FontSize="11" Margin="0,4,0,4" />
-                    </StackPanel>
-
-                    <!-- 属性列表 -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="12,0,12,8">
-                        <ItemsControl ItemsSource="{Binding SelectedNode.Properties}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="0,6">
-                                        <TextBlock Text="{Binding DisplayName}" Foreground="#BBB" FontSize="12" />
-                                        <!-- 枚举：下拉框 -->
-                                        <ComboBox ItemsSource="{Binding EnumValues}"
-                                                  SelectedItem="{Binding ValueText}"
-                                                  Visibility="{Binding IsEnum, Converter={StaticResource BoolToVisibility}}"
-                                                  Margin="0,2,0,0" Background="#3A3A3A" Foreground="#CCC" />
-                                        <!-- 布尔：复选框 -->
-                                        <CheckBox IsChecked="{Binding BoolValue}"
-                                                  Visibility="{Binding IsBool, Converter={StaticResource BoolToVisibility}}"
-                                                  Margin="0,2,0,0" Foreground="#CCC" Content="" />
-                                        <!-- 其他：文本框 -->
-                                        <TextBox Text="{Binding ValueText, UpdateSourceTrigger=PropertyChanged}"
-                                                 Visibility="{Binding IsBool, Converter={StaticResource InverseBoolToVisibility}}"
-                                                 Margin="0,2,0,0" Background="#3A3A3A" Foreground="#CCC"
-                                                 BorderBrush="#555" Padding="4,2" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-
-                    <!-- 未选中提示 -->
-                    <TextBlock Text="选择一个节点查看属性"
-                               Foreground="#666" FontSize="12"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Visibility="{Binding HasSelectedNode, Converter={StaticResource InverseBoolToVisibility}}" />
+                    <!-- 日志面板标题栏 -->
+                    <Border DockPanel.Dock="Top" Padding="10,4" Background="#2D2D2D"
+                            MouseLeftButtonDown="LogHeader_MouseLeftButtonDown" Cursor="Hand">
+                        <DockPanel>
+                            <TextBlock x:Name="LogToggleIndicator" Text="▼" DockPanel.Dock="Right"
+                                       Foreground="#888" FontSize="10" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <TextBlock Text="Console" Foreground="#888" FontSize="11" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+                    <!-- 日志内容 -->
+                    <Grid x:Name="LogContent">
+                        <TextBox x:Name="LogOutput" IsReadOnly="True"
+                                 Background="#1E1E1E" Foreground="#CCC" BorderThickness="0"
+                                 FontFamily="Consolas" FontSize="12"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 TextWrapping="NoWrap" />
+                        <Button Click="ClearLogButton_Click"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                Background="#2D2D2D" BorderBrush="#555"
+                                Padding="6,5" Cursor="Hand" Margin="0,0,8,8"
+                                Opacity="0.85" ToolTip="Clear">
+                            <Path Stroke="#AAA" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M5 5 L5 17 L15 17 L15 5 M3 5 L17 5 M8 5 L8 3 L12 3 L12 5 M8 8 L8 14 M10 8 L10 14 M12 8 L12 14" />
+                        </Button>
+                    </Grid>
                 </DockPanel>
             </Border>
+
+            <!-- 主区域：两栏（画布 + 属性面板） -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="270" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 画布 -->
+                <Grid Grid.Column="0" x:Name="CanvasArea"
+                      Background="#1E1E1E"
+                      ClipToBounds="True"
+                      MouseLeftButtonDown="CanvasArea_MouseLeftButtonDown"
+                      MouseLeftButtonUp="CanvasArea_MouseLeftButtonUp"
+                      MouseMove="CanvasArea_MouseMove"
+                      MouseWheel="CanvasArea_MouseWheel"
+                      MouseRightButtonDown="CanvasArea_MouseRightButtonDown">
+                    <!-- 画布变换容器 -->
+                    <Grid x:Name="CanvasContainer" RenderTransformOrigin="0,0">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+                                <TranslateTransform X="{Binding PanX}" Y="{Binding PanY}" />
+                            </TransformGroup>
+                        </Grid.RenderTransform>
+
+                        <!-- 连线层 -->
+                        <ItemsControl ItemsSource="{Binding Connections}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas IsHitTestVisible="True" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+
+                        <!-- 临时连线（拖拽中） -->
+                        <Path Data="{Binding PendingPathData}"
+                              Stroke="#FFD700" StrokeThickness="2"
+                              StrokeDashArray="4,2"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Visibility="{Binding HasPendingConnection, Converter={StaticResource BoolToVisibility}}"
+                              IsHitTestVisible="False" />
+
+                        <!-- 节点层 -->
+                        <ItemsControl ItemsSource="{Binding Nodes}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                    <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                        </ItemsControl>
+                    </Grid>
+
+                    <!-- 选框层（屏幕坐标，不随画布缩放） -->
+                    <Canvas IsHitTestVisible="False">
+                        <Rectangle x:Name="SelectionRect"
+                                   Stroke="#3399FF" StrokeThickness="1.5"
+                                   Fill="#3399FF" Opacity="0.15"
+                                   Visibility="Collapsed" />
+                    </Canvas>
+
+                    <!-- 操作提示 -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Margin="12,12,0,0" Background="#2D2D2D" CornerRadius="4"
+                            Padding="10,5" Opacity="0.7">
+                        <TextBlock Foreground="#777" FontSize="11">
+                            <Run Text="右键创建节点 · 左键拖拽框选 · Ctrl+点击多选 · Ctrl+C/V 复制粘贴 · Del 删除 · F11 全屏" />
+                        </TextBlock>
+                    </Border>
+
+                    <!-- 缩放指示器 -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Margin="0,12,12,0" Background="#2D2D2D" CornerRadius="4"
+                            Padding="8,3" Opacity="0.8">
+                        <TextBlock Foreground="#888" FontSize="11">
+                            <Run Text="缩放: " />
+                            <Run Text="{Binding Zoom, StringFormat=P0}" />
+                        </TextBlock>
+                    </Border>
+
+                    <!-- 小地图 -->
+                    <Border x:Name="MinimapBorder"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Margin="0,0,12,12" Width="180" Height="120"
+                            Background="#252526" CornerRadius="4"
+                            BorderBrush="#3F3F3F" BorderThickness="1"
+                            Opacity="0.9" ClipToBounds="True"
+                            MouseLeftButtonDown="Minimap_MouseLeftButtonDown"
+                            MouseMove="Minimap_MouseMove"
+                            MouseLeftButtonUp="Minimap_MouseLeftButtonUp">
+                        <Canvas x:Name="MinimapCanvas" />
+                    </Border>
+                </Grid>
+
+                <!-- 右栏：属性面板 -->
+                <Border Grid.Column="1" Background="#252526" BorderBrush="#3F3F3F" BorderThickness="1,0,0,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="属性" Foreground="#89DCEB"
+                                   FontSize="13" FontWeight="SemiBold" Margin="12,10,0,6" />
+
+                        <!-- 选中节点信息 -->
+                        <StackPanel DockPanel.Dock="Top" Margin="12,0,12,8"
+                                    Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding SelectedNode.DisplayName}"
+                                       Foreground="#FFF" FontSize="14" FontWeight="Bold" />
+                            <TextBlock Text="{Binding SelectedNode.Category}"
+                                       Foreground="#888" FontSize="11" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding SelectedNode.Description}"
+                                       Foreground="#777" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+                            <Separator Margin="0,8" Background="#3F3F3F" />
+                            <TextBlock Text="可编辑属性" Foreground="#AAA" FontSize="11" Margin="0,4,0,4" />
+                        </StackPanel>
+
+                        <!-- 属性列表 / 未选中提示（Grid 叠层，作为 DockPanel 最后子元素填满剩余空间） -->
+                        <Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="12,0,12,8">
+                                <ItemsControl ItemsSource="{Binding SelectedNode.Properties}" HorizontalAlignment="Stretch">
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,6" HorizontalAlignment="Stretch">
+                                                <TextBlock Text="{Binding DisplayName}" Foreground="#BBB" FontSize="12" />
+                                                <!-- 枚举：下拉框 -->
+                                                <ComboBox ItemsSource="{Binding EnumValues}"
+                                                          SelectedItem="{Binding ValueText}"
+                                                          Visibility="{Binding IsEnum, Converter={StaticResource BoolToVisibility}}"
+                                                          HorizontalAlignment="Stretch"
+                                                          Margin="0,2,0,0" Background="#3A3A3A" Foreground="#CCC" />
+                                                <!-- 布尔：复选框 -->
+                                                <CheckBox IsChecked="{Binding BoolValue}"
+                                                          Visibility="{Binding IsBool, Converter={StaticResource BoolToVisibility}}"
+                                                          HorizontalAlignment="Stretch"
+                                                          Margin="0,2,0,0" Foreground="#CCC" Content="" />
+                                                <!-- 其他：文本框 -->
+                                                <TextBox Text="{Binding ValueText, UpdateSourceTrigger=PropertyChanged}"
+                                                         Visibility="{Binding IsBool, Converter={StaticResource InverseBoolToVisibility}}"
+                                                         HorizontalAlignment="Stretch"
+                                                         Margin="0,2,0,0" Background="#3A3A3A" Foreground="#CCC"
+                                                         BorderBrush="#555" Padding="6,3" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+
+                            <!-- 未选中提示 -->
+                            <TextBlock Text="选择一个节点查看属性"
+                                       Foreground="#666" FontSize="12"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding HasSelectedNode, Converter={StaticResource InverseBoolToVisibility}}" />
+                        </Grid>
+                    </DockPanel>
+                </Border>
+            </Grid>
         </Grid>
     </DockPanel>
 </Window>

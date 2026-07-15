@@ -48,7 +48,7 @@ public class DisplayNode : NodeBase
             LastValue = Input.Value is double v ? v : 0;
         }
 
-        System.Console.WriteLine($"[{Label}] = {LastValue}");
+        ExecutionLogger.Log($"[{Label}] = {LastValue}", nameof(DisplayNode));
     }
 }
 

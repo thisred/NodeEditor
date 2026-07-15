@@ -9,6 +9,7 @@ using System.Windows.Shapes;
 using Microsoft.Win32;
 using System.ComponentModel;
 using NodeEditor.Core.Discovery;
+using NodeEditor.Core.Models;
 using NodeEditor.Wpf.ViewModels;
 
 namespace NodeEditor.Wpf;
@@ -62,6 +63,10 @@ public partial class MainWindow : Window
 
     // ── 节点搜索弹窗引用（非模态，支持替换） ──
     private NodeSearchWindow? _searchWindow;
+
+    // ── 日志面板状态 ──
+    private bool _isLogCollapsed;
+    private GridLength _savedLogHeight = new(150);
 
     public MainWindow()
     {
@@ -128,6 +133,51 @@ public partial class MainWindow : Window
 
         // F11 全屏切换
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+
+        // 订阅执行日志
+        ExecutionLogger.LogAdded += OnLogAdded;
+        ExecutionLogger.Cleared += OnLogCleared;
+    }
+
+    // ════════════════ 日志面板 ════════════════
+
+    private void OnLogAdded(LogEntry entry)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var time = entry.Timestamp.ToString("HH:mm:ss.fff");
+            var node = string.IsNullOrEmpty(entry.NodeName) ? "" : $" [{entry.NodeName}]";
+            LogOutput.AppendText($"{time}{node}  {entry.Message}\r\n");
+            LogOutput.ScrollToEnd();
+        }));
+    }
+
+    private void OnLogCleared()
+    {
+        Dispatcher.BeginInvoke(new Action(() => LogOutput.Clear()));
+    }
+
+    private void LogHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _isLogCollapsed = !_isLogCollapsed;
+        if (_isLogCollapsed)
+        {
+            _savedLogHeight = LogRow.Height;
+            LogRow.Height = GridLength.Auto;
+        }
+        else
+        {
+            LogRow.Height = _savedLogHeight;
+        }
+
+        LogContent.Visibility = _isLogCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        LogSplitter.Visibility = _isLogCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        LogToggleIndicator.Text = _isLogCollapsed ? "▲" : "▼";
+    }
+
+    private void ClearLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        ExecutionLogger.Clear();
     }
 
     // ════════════════ F11 全屏切换 ════════════════
@@ -293,6 +343,11 @@ public partial class MainWindow : Window
 
             _isBoxSelecting = true;
             _boxSelectStart = e.GetPosition(CanvasArea);
+            // 重置选框位置和尺寸，避免上一次框选的残影闪现
+            SelectionRect.Width = 0;
+            SelectionRect.Height = 0;
+            Canvas.SetLeft(SelectionRect, _boxSelectStart.X);
+            Canvas.SetTop(SelectionRect, _boxSelectStart.Y);
             SelectionRect.Visibility = Visibility.Visible;
             CanvasArea.CaptureMouse();
         }
@@ -755,5 +810,29 @@ public partial class MainWindow : Window
     private void UpdateStatus(string text)
     {
         StatusText.Text = text;
+    }
+
+    // ════════════════ 菜单事件 ════════════════
+
+    private void Copy_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CopySelectedNodes();
+        var count = _viewModel.GetSelectedNodes().Count;
+        if (count > 0) UpdateStatus($"已复制 {count} 个节点");
+    }
+
+    private void Paste_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.PasteNodes(30, 30);
+        UpdateStatus("已粘贴节点");
+    }
+
+    private void About_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            "Node Editor\n一个基于 WPF 的可视化节点编辑器\n\n支持：\n· 特性驱动的节点定义\n· 控制流 + 数据流混合执行\n· JSON 导入/导出\n· 框选、复制粘贴、缩放平移",
+            "关于 Node Editor",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 }

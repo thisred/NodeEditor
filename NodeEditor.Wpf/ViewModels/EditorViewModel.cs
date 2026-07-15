@@ -400,7 +400,23 @@ public class EditorViewModel : ViewModelBase
 
     public void ExecuteGraph()
     {
-        Graph.Execute();
+        ExecutionLogger.Clear();
+        var nodeCount = Graph.Nodes.Count;
+        ExecutionLogger.Log($"开始执行 — {nodeCount} 个节点");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            Graph.Execute();
+        }
+        catch (Exception ex)
+        {
+            ExecutionLogger.Log($"执行异常：{ex.Message}");
+        }
+
+        sw.Stop();
+
+        ExecutionLogger.Log($"执行完成 — 耗时 {sw.ElapsedMilliseconds}ms");
     }
 
     public void ClearGraph()
