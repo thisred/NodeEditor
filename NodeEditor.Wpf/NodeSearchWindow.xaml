@@ -18,15 +18,39 @@
             <Border DockPanel.Dock="Top" Padding="12,10,12,8"
                     BorderBrush="#3F3F3F" BorderThickness="0,0,0,1">
                 <StackPanel>
-                    <DockPanel Margin="0,0,0,6" Height="16">
-                        <TextBlock x:Name="BackButton" Text="← 返回"
-                                   DockPanel.Dock="Left"
-                                   Foreground="#89DCEB" FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Cursor="Hand"
-                                   MouseLeftButtonDown="BackButton_Click"
-                                   Visibility="Collapsed"
-                                   VerticalAlignment="Center" />
+                    <DockPanel Margin="0,0,0,6" Height="24">
+                        <Border x:Name="BackButton" DockPanel.Dock="Left"
+                                Background="Transparent" CornerRadius="4"
+                                Width="24" Height="24" Margin="-6,0,4,0"
+                                Cursor="Hand"
+                                MouseLeftButtonDown="BackButton_Click"
+                                Visibility="Collapsed"
+                                ToolTip="返回分类">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#37373D" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Path x:Name="BackArrow" StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="M6 0 L0 7 L6 14 M0 7 L14 7">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Stroke" Value="#999" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                                <Setter Property="Stroke" Value="#89DCEB" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                        </Border>
                         <TextBlock x:Name="TitleText" Text="选择分类"
                                    Foreground="#89DCEB" FontSize="12"
                                    FontWeight="SemiBold"

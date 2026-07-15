@@ -230,7 +230,8 @@
                                 Padding="6,5" Cursor="Hand" Margin="0,0,8,8"
                                 Opacity="0.85" ToolTip="Clear">
                             <Path Stroke="#AAA" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  Data="M5 5 L5 17 L15 17 L15 5 M3 5 L17 5 M8 5 L8 3 L12 3 L12 5 M8 8 L8 14 M10 8 L10 14 M12 8 L12 14" />
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="M2 2 L2 14 L12 14 L12 2 M0 2 L14 2 M5 2 L5 0 L9 0 L9 2 M5 5 L5 11 M7 5 L7 11 M9 5 L9 11" />
                         </Button>
                     </Grid>
                 </DockPanel>

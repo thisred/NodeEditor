@@ -314,15 +314,26 @@ public partial class MainWindow : Window
     {
         if (sender is FrameworkElement fe && fe.DataContext is NodeViewModel nodeVm)
         {
+            // Ctrl+点击：切换选中，不启动拖拽
             if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
             {
-                // Ctrl+点击：切换选中
                 _viewModel.ToggleNodeSelection(nodeVm);
             }
-            else if (!nodeVm.IsSelected)
+            else
             {
-                // 单击未选中的节点：只选这个
-                _viewModel.SelectNode(nodeVm);
+                // 如果点击的节点未选中，先只选中它
+                if (!nodeVm.IsSelected)
+                    _viewModel.SelectNode(nodeVm);
+
+                // 收集所有选中节点，准备多节点拖拽
+                var selected = _viewModel.GetSelectedNodes();
+                if (selected.Count == 0) selected.Add(nodeVm);
+
+                _isDraggingNode = true;
+                _draggingNode = nodeVm;
+                _dragStartCanvasPos = ScreenToCanvas(e.GetPosition(CanvasArea));
+                _dragStartPositions = selected.ToDictionary(n => n, n => (n.X, n.Y));
+                CanvasArea.CaptureMouse();
             }
 
             e.Handled = true; // 阻止冒泡到 CanvasArea
