@@ -1,0 +1,265 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using NodeEditor.Core.Attributes;
+
+namespace NodeEditor.Core.Models;
+
+/// <summary>
+/// 所有节点的基类。开发者继承此类并通过 [Node]、[Input]、[Output]、[NodeProperty] 特性定义自定义节点。
+/// 基类在构造时自动通过反射扫描特性，完成端口初始化和元数据读取。
+/// </summary>
+public abstract class NodeBase
+{
+    /// <summary>节点唯一 ID</summary>
+    public string Id { get; internal set; }
+
+    /// <summary>节点在画布上的 X 坐标</summary>
+    public double X { get; set; }
+
+    /// <summary>节点在画布上的 Y 坐标</summary>
+    public double Y { get; set; }
+
+    /// <summary>节点显示名称（来自 [Node] 特性）</summary>
+    public string DisplayName { get; private set; } = string.Empty;
+
+    /// <summary>节点分类（来自 [Node] 特性）</summary>
+    public string Category { get; private set; } = string.Empty;
+
+    /// <summary>节点颜色（来自 [Node] 特性）</summary>
+    public string Color { get; private set; } = "#5A5A5A";
+
+    /// <summary>节点描述（来自 [Node] 特性）</summary>
+    public string Description { get; private set; } = string.Empty;
+
+    /// <summary>节点种类（来自 [Node] 特性）</summary>
+    public NodeKind Kind { get; private set; } = NodeKind.Get;
+
+    /// <summary>节点类型全名（用于序列化时的类型恢复）</summary>
+    public string TypeName => GetType().AssemblyQualifiedName!;
+
+    /// <summary>该节点的所有端口</summary>
+    public List<NodePort> Ports { get; } = new();
+
+    /// <summary>输入端口列表</summary>
+    public IReadOnlyList<NodePort> InputPorts => Ports.Where(p => p.Direction == PortDirection.Input).ToList();
+
+    /// <summary>输出端口列表</summary>
+    public IReadOnlyList<NodePort> OutputPorts => Ports.Where(p => p.Direction == PortDirection.Output).ToList();
+
+    /// <summary>端口属性名 → NodePort 的映射（用于序列化时按属性名引用端口）</summary>
+    private readonly Dictionary<string, NodePort> _portByName = new();
+
+    /// <summary>可编辑属性名到 PropertyInfo 的映射（用于序列化和编辑器绑定）</summary>
+    private readonly Dictionary<string, PropertyInfo> _editableProperties = new();
+
+    protected NodeBase()
+    {
+        Id = Guid.NewGuid().ToString("N");
+        LoadMetadata();
+        InitializePorts();
+        RegisterEditableProperties();
+    }
+
+    /// <summary>
+    /// 读取 [Node] 特性元数据
+    /// </summary>
+    private void LoadMetadata()
+    {
+        var attr = GetType().GetCustomAttribute<NodeAttribute>();
+        if (attr != null)
+        {
+            DisplayName = attr.DisplayName;
+            Category = attr.Category;
+            Color = attr.Color;
+            Description = attr.Description;
+            Kind = attr.Kind;
+        }
+        else
+        {
+            DisplayName = GetType().Name;
+        }
+    }
+
+    /// <summary>
+    /// 通过反射扫描 [Input] / [Output] 特性，自动创建端口并赋值到对应属性
+    /// </summary>
+    private void InitializePorts()
+    {
+        var properties = GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.PropertyType == typeof(NodePort) && p.CanWrite);
+
+        foreach (var prop in properties)
+        {
+            var inputAttr = prop.GetCustomAttribute<InputAttribute>();
+            var outputAttr = prop.GetCustomAttribute<OutputAttribute>();
+            var execInputAttr = prop.GetCustomAttribute<ExecInputAttribute>();
+            var execOutputAttr = prop.GetCustomAttribute<ExecOutputAttribute>();
+
+            NodePort? port = null;
+            if (execInputAttr != null)
+            {
+                port = new NodePort(execInputAttr.DisplayName, typeof(void), PortDirection.Input, false, PortKind.Exec);
+            }
+            else if (execOutputAttr != null)
+            {
+                port = new NodePort(execOutputAttr.DisplayName, typeof(void), PortDirection.Output, false, PortKind.Exec);
+            }
+            else if (inputAttr != null)
+            {
+                port = new NodePort(inputAttr.DisplayName, inputAttr.PortType, PortDirection.Input, inputAttr.AllowMultiple, PortKind.Data);
+            }
+            else if (outputAttr != null)
+            {
+                port = new NodePort(outputAttr.DisplayName, outputAttr.PortType, PortDirection.Output, false, PortKind.Data);
+            }
+
+            if (port != null)
+            {
+                port.NodeId = Id;
+                Ports.Add(port);
+                _portByName[prop.Name] = port;
+                prop.SetValue(this, port);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 注册标记了 [NodeProperty] 的属性，供编辑器编辑和序列化使用
+    /// </summary>
+    private void RegisterEditableProperties()
+    {
+        var properties = GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetCustomAttribute<NodePropertyAttribute>() != null && p.CanRead && p.CanWrite);
+
+        foreach (var prop in properties)
+        {
+            _editableProperties[prop.Name] = prop;
+        }
+    }
+
+    /// <summary>根据端口 ID 获取端口</summary>
+    public NodePort? GetPort(string portId) => Ports.FirstOrDefault(p => p.Id == portId);
+
+    /// <summary>根据属性名获取端口</summary>
+    public NodePort? GetPortByName(string propertyName) =>
+        _portByName.TryGetValue(propertyName, out var port) ? port : null;
+
+    /// <summary>获取端口的属性名（反向查找）</summary>
+    public string? GetPortName(NodePort port) =>
+        _portByName.FirstOrDefault(kv => kv.Value == port).Key;
+
+    /// <summary>
+    /// 获取所有可编辑属性的信息（属性名、显示名、类型、分组、当前值）
+    /// </summary>
+    public List<EditablePropertyInfo> GetEditableProperties()
+    {
+        var result = new List<EditablePropertyInfo>();
+        foreach (var (name, prop) in _editableProperties)
+        {
+            var attr = prop.GetCustomAttribute<NodePropertyAttribute>()!;
+            result.Add(new EditablePropertyInfo(
+                PropertyName: name,
+                DisplayName: attr.DisplayName,
+                PropertyType: prop.PropertyType,
+                Group: attr.Group,
+                Order: attr.Order,
+                CurrentValue: prop.GetValue(this)
+            ));
+        }
+
+        return result.OrderBy(p => p.Order).ToList();
+    }
+
+    /// <summary>设置可编辑属性的值</summary>
+    public void SetPropertyValue(string propertyName, object? value)
+    {
+        if (_editableProperties.TryGetValue(propertyName, out var prop))
+        {
+            var converted = ConvertValue(value, prop.PropertyType);
+            prop.SetValue(this, converted);
+        }
+    }
+
+    /// <summary>获取可编辑属性的值</summary>
+    public object? GetPropertyValue(string propertyName)
+    {
+        if (_editableProperties.TryGetValue(propertyName, out var prop))
+        {
+            return prop.GetValue(this);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 获取所有可编辑属性的名称→值字典（用于序列化）
+    /// </summary>
+    public Dictionary<string, object?> GetPropertyValues()
+    {
+        var dict = new Dictionary<string, object?>();
+        foreach (var (name, prop) in _editableProperties)
+        {
+            dict[name] = prop.GetValue(this);
+        }
+
+        return dict;
+    }
+
+    /// <summary>
+    /// 批量设置可编辑属性值（用于反序列化）
+    /// </summary>
+    public void SetPropertyValues(Dictionary<string, object?> values)
+    {
+        if (values == null) return;
+        foreach (var (name, value) in values)
+        {
+            SetPropertyValue(name, value);
+        }
+    }
+
+    /// <summary>
+    /// 节点执行逻辑 — 子类重写以实现具体行为。
+    /// 从输入端口读取数据，处理后写入输出端口。
+    /// </summary>
+    public virtual void Execute()
+    {
+        // 默认空实现，纯数据节点无需重写
+    }
+
+    /// <summary>类型转换辅助方法</summary>
+    private static object? ConvertValue(object? value, Type targetType)
+    {
+        if (value == null) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+
+        var sourceType = value.GetType();
+        if (targetType.IsAssignableFrom(sourceType)) return value;
+
+        // 处理 nullable
+        var underlying = Nullable.GetUnderlyingType(targetType);
+        if (underlying != null) targetType = underlying;
+
+        // 枚举支持字符串转换
+        if (targetType.IsEnum)
+        {
+            return value is string s ? Enum.Parse(targetType, s, true) : Enum.ToObject(targetType, value);
+        }
+
+        return Convert.ChangeType(value, targetType);
+    }
+}
+
+/// <summary>
+/// 可编辑属性的描述信息
+/// </summary>
+public record EditablePropertyInfo(
+    string PropertyName,
+    string DisplayName,
+    Type PropertyType,
+    string Group,
+    int Order,
+    object? CurrentValue
+);

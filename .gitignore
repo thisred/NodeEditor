@@ -1,0 +1,24 @@
+## .NET 构建产物
+**/bin/
+**/obj/
+
+## IDE
+.idea/
+.vs/
+*.user
+*.suo
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+## 日志与临时文件
+*.log
+*.tmp
+*.bak
+
+## 操作系统
+Thumbs.db
+desktop.ini
+.DS_Store

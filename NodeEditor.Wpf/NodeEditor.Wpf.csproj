@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+        <ProjectReference Include="..\NodeEditor.Core\NodeEditor.Core.csproj"/>
+        <ProjectReference Include="..\NodeEditor.Serialization\NodeEditor.Serialization.csproj"/>
+        <ProjectReference Include="..\NodeEditor.Samples\NodeEditor.Samples.csproj"/>
+    </ItemGroup>
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWPF>true</UseWPF>
+    </PropertyGroup>
+
+</Project>
