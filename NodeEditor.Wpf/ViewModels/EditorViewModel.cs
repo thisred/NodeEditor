@@ -20,6 +20,9 @@ public class EditorViewModel : ViewModelBase
     public NodeDiscovery Discovery { get; }
     public JsonGraphSerializer Serializer { get; }
 
+    /// <summary>文件浏览器（左侧文件列表）</summary>
+    public FileExplorerViewModel FileExplorer { get; }
+
     // ── UI 数据集合 ──
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ConnectionViewModel> Connections { get; } = new();
@@ -176,6 +179,90 @@ public class EditorViewModel : ViewModelBase
     public ICommand ImportCommand { get; }
     public ICommand ExecuteCommand { get; }
     public ICommand ClearCommand { get; }
+    public ICommand SaveCommand { get; }
+
+    // ── 文件管理 ──
+    /// <summary>当前编辑的文件路径（null = 未关联文件）</summary>
+    public string? CurrentFilePath { get; private set; }
+
+    /// <summary>正在加载文件（抑制脏标记）</summary>
+    private bool _isLoading;
+
+    private bool _isDirty;
+    /// <summary>当前图是否有未保存的变更</summary>
+    public bool IsDirty
+    {
+        get => _isDirty;
+        private set
+        {
+            if (Set(ref _isDirty, value))
+                OnPropertyChanged(nameof(WindowTitle));
+        }
+    }
+
+    /// <summary>窗口标题（文件名 + 脏标记）</summary>
+    public string WindowTitle
+    {
+        get
+        {
+            var name = string.IsNullOrEmpty(CurrentFilePath)
+                ? "未命名"
+                : System.IO.Path.GetFileName(CurrentFilePath);
+            return IsDirty ? $"● {name} — Node Editor" : $"{name} — Node Editor";
+        }
+    }
+
+    /// <summary>标记当前图为已修改</summary>
+    private void MarkDirty()
+    {
+        if (_isLoading) return;
+        IsDirty = true;
+        FileExplorer.MarkActiveFileDirty();
+    }
+
+    /// <summary>加载指定文件到画布</summary>
+    public void LoadFile(string? filePath)
+    {
+        _isLoading = true;
+        try
+        {
+            ClearGraph();
+
+            if (!string.IsNullOrEmpty(filePath) && System.IO.File.Exists(filePath))
+            {
+                var newGraph = Serializer.DeserializeFromFile(filePath);
+                Graph.ImportFrom(newGraph);
+                CurrentFilePath = filePath;
+                GraphImported?.Invoke();
+            }
+            else
+            {
+                CurrentFilePath = filePath;
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+        FileExplorer.SetActiveFile(filePath);
+        FileExplorer.MarkActiveFileClean();
+        IsDirty = false;
+        OnPropertyChanged(nameof(WindowTitle));
+    }
+
+    /// <summary>保存当前图到关联文件。返回是否实际保存了。</summary>
+    public bool SaveCurrent()
+    {
+        if (string.IsNullOrEmpty(CurrentFilePath)) return false;
+        Serializer.SerializeToFile(Graph, CurrentFilePath);
+        IsDirty = false;
+        FileExplorer.MarkActiveFileClean();
+        return true;
+    }
+
+    /// <summary>当前文件名（用于状态栏显示）</summary>
+    public string CurrentFileName =>
+        string.IsNullOrEmpty(CurrentFilePath) ? "未命名" : System.IO.Path.GetFileName(CurrentFilePath);
 
     // ── 事件 ──
     /// <summary>请求保存文件对话框（View 层处理）</summary>
@@ -208,6 +295,11 @@ public class EditorViewModel : ViewModelBase
         Graph.ConnectionAdded += OnConnectionAdded;
         Graph.ConnectionRemoved += OnConnectionRemoved;
 
+        // 初始化文件浏览器
+        FileExplorer = new FileExplorerViewModel();
+        FileExplorer.ActiveFileChanged += OnActiveFileChanged;
+        FileExplorer.NewGraphCreated += OnNewGraphCreated;
+
         // 初始化命令
         CreateNodeCommand = new RelayCommand(param => CreateNode(param as string));
         DeleteSelectedCommand = new RelayCommand(() => DeleteSelectedNode());
@@ -217,6 +309,7 @@ public class EditorViewModel : ViewModelBase
         ImportCommand = new RelayCommand(() => Import());
         ExecuteCommand = new RelayCommand(() => ExecuteGraph());
         ClearCommand = new RelayCommand(() => ClearGraph());
+        SaveCommand = new RelayCommand(() => SaveCurrent());
     }
 
     /// <summary>刷新节点面板的分类列表</summary>
@@ -248,6 +341,7 @@ public class EditorViewModel : ViewModelBase
         var nvm = new NodeViewModel(node);
         nvm.PositionChanged += OnNodePositionChanged;
         Nodes.Add(nvm);
+        MarkDirty();
     }
 
     private void OnNodeRemoved(NodeBase node)
@@ -260,6 +354,7 @@ public class EditorViewModel : ViewModelBase
             if (SelectedNode == nvm)
                 SelectedNode = GetSelectedNodes().LastOrDefault();
         }
+        MarkDirty();
     }
 
     public void DeleteNode(NodeViewModel? nodeVm)
@@ -281,6 +376,7 @@ public class EditorViewModel : ViewModelBase
     private void OnNodePositionChanged()
     {
         NodePositionsChanged?.Invoke();
+        MarkDirty();
     }
 
     // ── 连线管理 ──
@@ -315,6 +411,7 @@ public class EditorViewModel : ViewModelBase
 
         sourcePortVm.RefreshConnectionState();
         targetPortVm.RefreshConnectionState();
+        MarkDirty();
     }
 
     private void OnConnectionRemoved(NodeConnection conn)
@@ -331,6 +428,7 @@ public class EditorViewModel : ViewModelBase
             sourceNodeVm?.GetPortViewModel(conn.SourcePortId)?.RefreshConnectionState();
             targetNodeVm?.GetPortViewModel(conn.TargetPortId)?.RefreshConnectionState();
         }
+        MarkDirty();
     }
 
     public void DeleteConnection(ConnectionViewModel? connVm)
@@ -423,6 +521,43 @@ public class EditorViewModel : ViewModelBase
     public void ClearGraph()
     {
         Graph.Clear();
+        if (!_isLoading)
+            MarkDirty();
+    }
+
+    /// <summary>文件浏览器活跃文件变更回调</summary>
+    private void OnActiveFileChanged(string? filePath)
+    {
+        if (filePath == CurrentFilePath) return;
+        // 切换文件前自动保存当前文件的修改
+        if (IsDirty)
+            SaveCurrent();
+        LoadFile(filePath);
+    }
+
+    /// <summary>新建图文件 — 清空画布并保存空图到指定路径</summary>
+    private void OnNewGraphCreated(string filePath)
+    {
+        // 新建图前自动保存当前文件的修改
+        if (IsDirty)
+            SaveCurrent();
+
+        _isLoading = true;
+        try
+        {
+            ClearGraph();
+            CurrentFilePath = filePath;
+            // 立即保存空图到磁盘
+            Serializer.SerializeToFile(Graph, filePath);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+        IsDirty = false;
+        FileExplorer.MarkActiveFileClean();
+        OnPropertyChanged(nameof(WindowTitle));
+        GraphImported?.Invoke();
     }
 
     /// <summary>取消所有节点选中</summary>

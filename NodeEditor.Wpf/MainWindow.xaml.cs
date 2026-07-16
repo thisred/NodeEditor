@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IO = System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using System.ComponentModel;
 using NodeEditor.Core.Discovery;
@@ -69,6 +71,16 @@ public partial class MainWindow : Window
     private bool _isLogCollapsed;
     private GridLength _savedLogHeight = new(150);
 
+    // ── 左栏折叠状态 ──
+    private GridLength _savedLeftWidth = new(220);
+
+    // ── 右栏折叠状态 ──
+    private GridLength _savedRightWidth = new(270);
+
+    // ── 自动保存定时器 ──
+    private readonly DispatcherTimer _autoSaveTimer;
+    private IO.FileSystemWatcher? _fileWatcher;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -95,6 +107,39 @@ public partial class MainWindow : Window
             };
             return dlg.ShowDialog() == true ? dlg.FileName : null;
         };
+
+        // 文件浏览器回调
+        _viewModel.FileExplorer.RequestFolderSelection = () =>
+        {
+            var dlg = new OpenFolderDialog
+            {
+                Title = "选择技能图文件夹"
+            };
+            return dlg.ShowDialog() == true ? dlg.FolderName : null;
+        };
+
+        _viewModel.FileExplorer.RequestNewFileName = () =>
+        {
+            return SimpleInputDialog.Show("新建图", "请输入图文件名（不含 .json 后缀）", "new_skill", this);
+        };
+
+        _viewModel.FileExplorer.RequestOverwriteConfirmation = filePath =>
+        {
+            var fileName = IO.Path.GetFileName(filePath);
+            return MessageBox.Show(
+                $"文件 \"{fileName}\" 已存在。\n",
+                "文件已存在",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        };
+
+        // 文件列表变更时刷新 FileSystemWatcher
+        _viewModel.FileExplorer.FilesChanged += OnFilesChanged;
+
+        // 自动保存定时器（5 秒间隔）
+        _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _autoSaveTimer.Tick += OnAutoSaveTick;
+        _autoSaveTimer.Start();
 
         // 端口位置更新（每次布局变化时触发）
         CanvasContainer.LayoutUpdated += OnLayoutUpdated;
@@ -125,6 +170,14 @@ public partial class MainWindow : Window
         _viewModel.NodePositionsChanged += () => ScheduleMinimapUpdate();
         CanvasArea.SizeChanged += (_, _) => ScheduleMinimapUpdate();
 
+        // 窗口标题绑定
+        _viewModel.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(EditorViewModel.WindowTitle))
+                Title = _viewModel.WindowTitle;
+        };
+        Title = _viewModel.WindowTitle;
+
         // 导入后延迟刷新端口坐标（等待 UI 渲染完成）
         _viewModel.GraphImported += () =>
         {
@@ -144,6 +197,160 @@ public partial class MainWindow : Window
         // 订阅执行日志
         ExecutionLogger.LogAdded += OnLogAdded;
         ExecutionLogger.Cleared += OnLogCleared;
+
+        // 窗口关闭时自动保存
+        Closing += OnWindowClosing;
+    }
+
+    // ════════════════ 自动保存 ════════════════
+
+    private void OnAutoSaveTick(object? sender, EventArgs e)
+    {
+        try
+        {
+            _viewModel.SaveCurrent();
+        }
+        catch
+        {
+            // 自动保存失败静默处理
+        }
+    }
+
+    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        _autoSaveTimer.Stop();
+
+        // 有未保存变更时提示用户
+        if (_viewModel.IsDirty)
+        {
+            var result = MessageBox.Show(
+                $"\"{_viewModel.CurrentFileName}\" 有未保存的更改。\n\n是否在关闭前保存？",
+                "未保存的更改",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Cancel)
+            {
+                e.Cancel = true;
+                return;
+            }
+            if (result == MessageBoxResult.Yes)
+            {
+                try { _viewModel.SaveCurrent(); }
+                catch { }
+            }
+            // No = 不保存直接关闭
+        }
+    }
+
+    // ════════════════ 文件夹监视 ════════════════
+
+    private void OnFilesChanged()
+    {
+        var workspace = _viewModel.FileExplorer.WorkspacePath;
+        if (string.IsNullOrEmpty(workspace)) return;
+
+        _fileWatcher?.Dispose();
+        _fileWatcher = new IO.FileSystemWatcher(workspace, "*.json")
+        {
+            EnableRaisingEvents = true,
+            IncludeSubdirectories = false
+        };
+        _fileWatcher.Changed += OnExternalFileChanged;
+        _fileWatcher.Created += OnExternalFileCreated;
+        _fileWatcher.Deleted += OnExternalFileDeleted;
+        _fileWatcher.Renamed += OnExternalFileRenamed;
+    }
+
+    private void OnExternalFileChanged(object sender, IO.FileSystemEventArgs e)
+    {
+        // 外部修改不自动重载（避免编辑时被覆盖）
+    }
+
+    private void OnExternalFileCreated(object sender, IO.FileSystemEventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() => _viewModel.FileExplorer.RefreshFiles()));
+    }
+
+    private void OnExternalFileDeleted(object sender, IO.FileSystemEventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() => _viewModel.FileExplorer.RefreshFiles()));
+    }
+
+    private void OnExternalFileRenamed(object sender, IO.RenamedEventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() => _viewModel.FileExplorer.RefreshFiles()));
+    }
+
+    // ════════════════ 侧栏折叠 ════════════════
+
+    private void CollapseSidebar_Click(object sender, RoutedEventArgs e)
+    {
+        _savedLeftWidth = LeftCol.Width;
+        LeftCol.Width = new GridLength(0);
+        LeftCol.MinWidth = 0;
+        FileSidebar.Visibility = Visibility.Collapsed;
+        LeftSplitter.Visibility = Visibility.Collapsed;
+        ExpandSidebarBtn.Visibility = Visibility.Visible;
+    }
+
+    private void ExpandSidebar_Click(object sender, RoutedEventArgs e)
+    {
+        LeftCol.MinWidth = 40;
+        LeftCol.Width = _savedLeftWidth;
+        FileSidebar.Visibility = Visibility.Visible;
+        LeftSplitter.Visibility = Visibility.Visible;
+        ExpandSidebarBtn.Visibility = Visibility.Collapsed;
+    }
+
+    private void CollapseProperty_Click(object sender, RoutedEventArgs e)
+    {
+        _savedRightWidth = RightCol.Width;
+        RightCol.Width = new GridLength(0);
+        RightCol.MinWidth = 0;
+        PropertyPanel.Visibility = Visibility.Collapsed;
+        RightSplitter.Visibility = Visibility.Collapsed;
+        ExpandPropertyBtn.Visibility = Visibility.Visible;
+    }
+
+    private void ExpandProperty_Click(object sender, RoutedEventArgs e)
+    {
+        RightCol.MinWidth = 40;
+        RightCol.Width = _savedRightWidth;
+        PropertyPanel.Visibility = Visibility.Visible;
+        RightSplitter.Visibility = Visibility.Visible;
+        ExpandPropertyBtn.Visibility = Visibility.Collapsed;
+    }
+
+    // ════════════════ 文件列表交互 ════════════════
+
+    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.FileExplorer.OpenFolderCommand.Execute(null);
+    }
+
+    private void NewGraph_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.FileExplorer.NewGraphCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// 文件列表点击处理 — 如果点击的是当前已选中的文件，则重新加载
+    /// </summary>
+    private void FileList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListBox listBox &&
+            ItemsControl.ContainerFromElement(listBox, e.OriginalSource as DependencyObject) is ListBoxItem item &&
+            item.DataContext is FileItemViewModel fileVm &&
+            fileVm == _viewModel.FileExplorer.ActiveFile)
+        {
+            // 双击当前文件重新加载
+            if (e.ClickCount == 2)
+            {
+                _viewModel.LoadFile(fileVm.FilePath);
+            }
+            e.Handled = true; // 阻止取消选中
+        }
     }
 
     // ════════════════ 日志面板 ════════════════
@@ -170,10 +377,12 @@ public partial class MainWindow : Window
         if (_isLogCollapsed)
         {
             _savedLogHeight = LogRow.Height;
+            LogRow.MinHeight = 0;
             LogRow.Height = GridLength.Auto;
         }
         else
         {
+            LogRow.MinHeight = 28;
             LogRow.Height = _savedLogHeight;
         }
 
@@ -194,6 +403,14 @@ public partial class MainWindow : Window
         if (e.Key == Key.F11)
         {
             ToggleFullscreen();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.S && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            if (_viewModel.SaveCurrent())
+                UpdateStatus($"已保存 {_viewModel.CurrentFileName}");
+            else
+                UpdateStatus("无关联文件，无法保存");
             e.Handled = true;
         }
         else if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
