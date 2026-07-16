@@ -398,7 +398,7 @@ public class EditorViewModel : ViewModelBase
         GraphImported?.Invoke();
     }
 
-    public void ExecuteGraph()
+    public async void ExecuteGraph()
     {
         ExecutionLogger.Clear();
         var nodeCount = Graph.Nodes.Count;
@@ -407,7 +407,8 @@ public class EditorViewModel : ViewModelBase
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            Graph.Execute();
+            // 在后台线程执行，避免 DelayNode 等节点的 Thread.Sleep 阻塞 UI
+            await Task.Run(() => Graph.Execute());
         }
         catch (Exception ex)
         {

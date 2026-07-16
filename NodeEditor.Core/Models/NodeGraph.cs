@@ -324,8 +324,8 @@ public class NodeGraph
 
         node.Execute();
 
-        // 沿执行输出端口继续
-        foreach (var port in node.OutputPorts.Where(p => p.Kind == PortKind.Exec))
+        // 沿执行输出端口继续（节点可重写 GetActiveExecOutputs 实现条件分支）
+        foreach (var port in node.GetActiveExecOutputs())
         {
             foreach (var conn in port.Connections)
             {
@@ -372,13 +372,39 @@ public class NodeGraph
     }
 
     /// <summary>
+    /// 数值类型的隐式拓宽优先级（rank 越大越宽）。
+    /// source rank ≤ target rank 时允许隐式转换，如 int→double、float→double。
+    /// </summary>
+    private static readonly Dictionary<Type, int> s_numericRank = new()
+    {
+        { typeof(sbyte),  0 },
+        { typeof(byte),   1 },
+        { typeof(short),  2 },
+        { typeof(ushort), 3 },
+        { typeof(int),    4 },
+        { typeof(uint),   5 },
+        { typeof(long),   6 },
+        { typeof(ulong),  7 },
+        { typeof(float),  8 },
+        { typeof(double), 9 },
+    };
+
+    /// <summary>
     /// 类型兼容性检查：目标类型可以是源类型的基类/接口，或完全相同。
     /// 支持 object 类型作为通配（任何类型都可连接）。
+    /// 支持数值隐式拓宽转换（int→long→float→double 等）。
     /// </summary>
     public static bool IsTypeCompatible(Type sourceType, Type targetType)
     {
         if (targetType == typeof(object) || sourceType == typeof(object))
             return true;
-        return targetType.IsAssignableFrom(sourceType);
+        if (targetType.IsAssignableFrom(sourceType))
+            return true;
+        // 数值隐式拓宽：int → long → float → double 等
+        if (s_numericRank.TryGetValue(sourceType, out var srcRank) &&
+            s_numericRank.TryGetValue(targetType, out var dstRank) &&
+            srcRank <= dstRank)
+            return true;
+        return false;
     }
 }

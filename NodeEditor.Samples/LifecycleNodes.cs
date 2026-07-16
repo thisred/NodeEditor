@@ -43,33 +43,32 @@ public class OnEndNode : NodeBase
 /// 打印动作 — 接收一个字符串输入并打印到控制台。
 /// 有执行输入/输出端口，串联在执行链中。
 /// </summary>
-[Node("打印", Category = "动作", Color = "#4CAF50", Description = "将输入的字符串打印到控制台", Kind = NodeKind.Action)]
+[Node("打印", Category = "动作", Color = "#4CAF50", Description = "将输入值打印到控制台（支持任意类型）", Kind = NodeKind.Action)]
 public class PrintActionNode : NodeBase
 {
     [ExecInput("In")] public NodePort ExecIn { get; set; } = null!;
 
     [ExecOutput("Out")] public NodePort ExecOut { get; set; } = null!;
 
-    [Input("消息", typeof(string))] public NodePort MessageInput { get; set; } = null!;
+    [Input("消息", typeof(object))] public NodePort MessageInput { get; set; } = null!;
 
     [NodeProperty("前缀", Group = "格式", Order = 0)]
     public string Prefix { get; set; } = "";
 
     public override void Execute()
     {
-        var message = GetStringValue(MessageInput);
+        var message = GetInputValueString(MessageInput);
         var output = string.IsNullOrEmpty(Prefix) ? message : $"[{Prefix}] {message}";
         ExecutionLogger.Log(output, nameof(PrintActionNode));
     }
 
-    private static string GetStringValue(NodePort port)
+    private static string GetInputValueString(NodePort port)
     {
         if (port.IsConnected)
         {
             var connectedPort = port.GetConnectedPort();
             return connectedPort?.Value?.ToString() ?? "";
         }
-
         return port.Value?.ToString() ?? "";
     }
 }

@@ -12,8 +12,20 @@ namespace NodeEditor.Core.Models;
 /// </summary>
 public abstract class NodeBase
 {
-    /// <summary>节点唯一 ID</summary>
-    public string Id { get; internal set; }
+    private string _id = string.Empty;
+
+    /// <summary>节点唯一 ID（设置时同步更新所有端口的 NodeId）</summary>
+    public string Id
+    {
+        get => _id;
+        internal set
+        {
+            _id = value;
+            // 反序列化恢复 ID 时，同步更新端口的 NodeId
+            foreach (var port in Ports)
+                port.NodeId = value;
+        }
+    }
 
     /// <summary>节点在画布上的 X 坐标</summary>
     public double X { get; set; }
@@ -228,6 +240,72 @@ public abstract class NodeBase
     public virtual void Execute()
     {
         // 默认空实现，纯数据节点无需重写
+    }
+
+    /// <summary>
+    /// 获取输入端口的值：已连接则返回上游输出端口的值，否则返回端口本地值。
+    /// 泛型辅助方法，子类可直接使用。
+    /// </summary>
+    protected T GetInput<T>(NodePort port, T defaultValue = default!)
+    {
+        object? value = null;
+        if (port.IsConnected)
+        {
+            var connectedPort = port.GetConnectedPort();
+            value = connectedPort?.Value;
+        }
+        else
+        {
+            value = port.Value;
+        }
+
+        if (value is T v) return v;
+        // 数值类型转换：boxed int → double 等
+        if (value != null)
+        {
+            try { return (T)Convert.ChangeType(value, typeof(T)); } catch { }
+        }
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// 获取当前应该沿哪些执行输出端口继续执行。
+    /// 默认返回所有执行输出端口。Branch 等条件节点可重写此方法以实现选择性执行。
+    /// </summary>
+    public virtual IEnumerable<NodePort> GetActiveExecOutputs()
+    {
+        return OutputPorts.Where(p => p.Kind == PortKind.Exec);
+    }
+
+    /// <summary>
+    /// 从指定的执行输出端口出发，递归执行整条执行链（使用独立的 visited 集合）。
+    /// 供 For/While 等循环节点在 Execute() 内部调用以执行循环体。
+    /// </summary>
+    protected void ExecuteExecChain(NodePort execOutput)
+    {
+        if (execOutput == null) return;
+        var visited = new HashSet<string>();
+        foreach (var conn in execOutput.Connections)
+        {
+            if (conn.TargetNode != null)
+                ExecuteDownstream(conn.TargetNode, visited);
+        }
+    }
+
+    /// <summary>递归执行节点及其下游执行链</summary>
+    private static void ExecuteDownstream(NodeBase node, HashSet<string> visited)
+    {
+        if (visited.Contains(node.Id)) return;
+        visited.Add(node.Id);
+        node.Execute();
+        foreach (var port in node.GetActiveExecOutputs())
+        {
+            foreach (var conn in port.Connections)
+            {
+                if (conn.TargetNode != null)
+                    ExecuteDownstream(conn.TargetNode, visited);
+            }
+        }
     }
 
     /// <summary>类型转换辅助方法</summary>

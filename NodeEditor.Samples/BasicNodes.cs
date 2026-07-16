@@ -25,27 +25,27 @@ public class ConstantNode : NodeBase
 /// 显示节点 — 接收一个值并在执行时输出到控制台。
 /// 常作为数据流的终点/调试用。
 /// </summary>
-[Node("显示输出", Category = "调试", Color = "#FF9800", Description = "将输入值打印到控制台", Kind = NodeKind.Get)]
+[Node("显示输出", Category = "调试", Color = "#FF9800", Description = "将输入值打印到控制台（支持任意类型）", Kind = NodeKind.Get)]
 public class DisplayNode : NodeBase
 {
-    [Input("输入", typeof(double))] public NodePort Input { get; set; } = null!;
+    [Input("输入", typeof(object))] public NodePort Input { get; set; } = null!;
 
     [NodeProperty("标签", Group = "基础", Order = 0)]
     public string Label { get; set; } = "输出";
 
-    /// <summary>最后一次接收到的值</summary>
-    public double LastValue { get; private set; }
+    /// <summary>最后一次接收到的值（原始对象）</summary>
+    public object? LastValue { get; private set; }
 
     public override void Execute()
     {
         if (Input.IsConnected)
         {
             var connectedPort = Input.GetConnectedPort();
-            LastValue = connectedPort?.Value is double d ? d : 0;
+            LastValue = connectedPort?.Value;
         }
         else
         {
-            LastValue = Input.Value is double v ? v : 0;
+            LastValue = Input.Value;
         }
 
         ExecutionLogger.Log($"[{Label}] = {LastValue}", nameof(DisplayNode));
