@@ -13,12 +13,15 @@ namespace NodeEditor.Wpf;
 /// 节点创建弹窗 — 分类浏览 + 全局搜索。
 /// 空搜索时显示分类列表；输入文字时搜索所有节点。
 /// </summary>
-public partial class NodeSearchWindow : Window
+public partial class NodeSearchWindow : UserControl
 {
     private readonly Dictionary<string, List<NodeEntry>> _byCategory;
     private readonly List<NodeEntry> _allNodes;
     private readonly Action<string>? _onSelected;
     private string? _selectedCategory;
+
+    /// <summary>请求关闭弹窗（由宿主 Popup 监听）</summary>
+    public event Action? RequestClose;
 
     public NodeSearchWindow(IEnumerable<NodeDescriptor> descriptors, Action<string>? onSelected)
     {
@@ -103,7 +106,7 @@ public partial class NodeSearchWindow : Window
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 _onSelected?.Invoke(entry.Descriptor.TypeId);
-                Close();
+                RequestClose?.Invoke();
             }));
         }
     }
@@ -117,7 +120,7 @@ public partial class NodeSearchWindow : Window
         if (entry != null)
         {
             _onSelected?.Invoke(entry.Descriptor.TypeId);
-            Close();
+            RequestClose?.Invoke();
         }
     }
 
@@ -181,7 +184,7 @@ public partial class NodeSearchWindow : Window
 
     // ════════════════ 键盘交互 ════════════════
 
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private void Panel_KeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -193,7 +196,7 @@ public partial class NodeSearchWindow : Window
                 e.Handled = true;
                 break;
             case Key.Escape:
-                Close();
+                RequestClose?.Invoke();
                 e.Handled = true;
                 break;
             case Key.Back:

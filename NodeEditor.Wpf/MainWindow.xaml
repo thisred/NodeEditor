@@ -26,7 +26,6 @@
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                 <Setter Property="BorderBrush" Value="#007ACC" />
-                                <Setter Property="BorderThickness" Value="2" />
                                 <Setter Property="Background">
                                     <Setter.Value>
                                         <SolidColorBrush Color="#333F5A" Opacity="0.97" />
@@ -65,7 +64,8 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Margin="0,2" Height="16">
-                                        <Ellipse Stroke="#888" StrokeThickness="1"
+                                        <Ellipse Fill="{Binding TypeColor}"
+                                                 Stroke="#888" StrokeThickness="1"
                                                  Margin="-7,0,0,0"
                                                  Tag="{Binding}"
                                                  Loaded="Port_Loaded" Unloaded="Port_Unloaded"
@@ -76,11 +76,9 @@
                                                 <Style TargetType="Ellipse">
                                                     <Setter Property="Width" Value="12" />
                                                     <Setter Property="Height" Value="12" />
-                                                    <Setter Property="Fill" Value="#6DBE45" />
-                                                    <Setter Property="ToolTip" Value="{Binding PortTypeName}" />
+                                                    <Setter Property="ToolTip" Value="{Binding TypeDisplayName}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsExec}" Value="True">
-                                                            <Setter Property="Fill" Value="#F0F0F0" />
                                                             <Setter Property="Width" Value="14" />
                                                             <Setter Property="Height" Value="14" />
                                                             <Setter Property="ToolTip" Value="Exec" />
@@ -92,6 +90,10 @@
                                         <TextBlock Text="{Binding DisplayName}"
                                                    Foreground="#CCC" FontSize="11"
                                                    VerticalAlignment="Center" Margin="2,0,0,0" />
+                                        <TextBlock Text="{Binding TypeDisplayName}"
+                                                   Foreground="{Binding TypeColor}" FontSize="9"
+                                                   VerticalAlignment="Center" Margin="3,1,0,0"
+                                                   Visibility="{Binding IsExec, Converter={StaticResource InverseBoolToVisibility}}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -104,10 +106,15 @@
                                     <StackPanel Orientation="Horizontal"
                                                 HorizontalAlignment="Right"
                                                 Margin="0,2" Height="16">
+                                        <TextBlock Text="{Binding TypeDisplayName}"
+                                                   Foreground="{Binding TypeColor}" FontSize="9"
+                                                   VerticalAlignment="Center" Margin="0,1,3,0"
+                                                   Visibility="{Binding IsExec, Converter={StaticResource InverseBoolToVisibility}}" />
                                         <TextBlock Text="{Binding DisplayName}"
                                                    Foreground="#CCC" FontSize="11"
                                                    VerticalAlignment="Center" Margin="0,0,2,0" />
-                                        <Ellipse Stroke="#888" StrokeThickness="1"
+                                        <Ellipse Fill="{Binding TypeColor}"
+                                                 Stroke="#888" StrokeThickness="1"
                                                  Margin="0,0,-7,0"
                                                  Tag="{Binding}"
                                                  Loaded="Port_Loaded" Unloaded="Port_Unloaded"
@@ -118,11 +125,9 @@
                                                 <Style TargetType="Ellipse">
                                                     <Setter Property="Width" Value="12" />
                                                     <Setter Property="Height" Value="12" />
-                                                    <Setter Property="Fill" Value="#569CD6" />
-                                                    <Setter Property="ToolTip" Value="{Binding PortTypeName}" />
+                                                    <Setter Property="ToolTip" Value="{Binding TypeDisplayName}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsExec}" Value="True">
-                                                            <Setter Property="Fill" Value="#F0F0F0" />
                                                             <Setter Property="Width" Value="14" />
                                                             <Setter Property="Height" Value="14" />
                                                             <Setter Property="ToolTip" Value="Exec" />
@@ -272,12 +277,13 @@
                         </ItemsControl>
 
                         <!-- 临时连线（拖拽中） -->
-                        <Path Data="{Binding PendingPathData}"
-                              Stroke="#FFD700" StrokeThickness="2"
-                              StrokeDashArray="4,2"
-                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                              Visibility="{Binding HasPendingConnection, Converter={StaticResource BoolToVisibility}}"
-                              IsHitTestVisible="False" />
+                        <Canvas IsHitTestVisible="False">
+                            <Path Data="{Binding PendingPathData}"
+                                  Stroke="#FFD700" StrokeThickness="2"
+                                  StrokeDashArray="4,2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Visibility="{Binding HasPendingConnection, Converter={StaticResource BoolToVisibility}}" />
+                        </Canvas>
 
                         <!-- 节点层 -->
                         <ItemsControl ItemsSource="{Binding Nodes}">

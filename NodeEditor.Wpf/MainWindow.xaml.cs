@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -61,8 +62,8 @@ public partial class MainWindow : Window
     private readonly ScaleTransform _gridScale = new(1, 1);
     private readonly TranslateTransform _gridTranslate = new(0, 0);
 
-    // ── 节点搜索弹窗引用（非模态，支持替换） ──
-    private NodeSearchWindow? _searchWindow;
+    // ── 节点搜索弹窗（Popup 承载，嵌入主窗口） ──
+    private Popup? _searchPopup;
 
     // ── 日志面板状态 ──
     private bool _isLogCollapsed;
@@ -111,6 +112,12 @@ public partial class MainWindow : Window
         };
 
         Loaded += (_, _) => SetupGridBackground();
+
+        // Popup 打开时，点击主窗口任意区域或窗口失焦即关闭
+        // （Popup 是独立视觉树，其内部点击不会触发这些 Preview 事件）
+        PreviewMouseLeftButtonDown += (_, _) => { if (_searchPopup?.IsOpen == true) CloseSearchWindow(); };
+        PreviewMouseRightButtonDown += (_, _) => { if (_searchPopup?.IsOpen == true) CloseSearchWindow(); };
+        Deactivated += (_, _) => CloseSearchWindow();
 
         // 小地图更新（事件驱动，不依赖 LayoutUpdated）
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -417,21 +424,37 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>通过 HitTest 查找鼠标下的端口</summary>
+    /// <summary>查找鼠标附近最近的端口（半径搜索，比精确 HitTest 更宽容）</summary>
     private PortViewModel? FindPortUnderMouse(Point canvasContainerPos)
     {
-        var result = VisualTreeHelper.HitTest(CanvasContainer, canvasContainerPos);
-        if (result?.VisualHit == null) return null;
+        const double hitRadius = 15; // 画布坐标系下的命中半径
+        PortViewModel? best = null;
+        var bestDist = hitRadius;
 
-        var current = result.VisualHit;
-        while (current != null)
+        foreach (var (portVm, ellipse) in _portElements)
         {
-            if (current is Ellipse ell && ell.Tag is PortViewModel pvm)
-                return pvm;
-            current = VisualTreeHelper.GetParent(current);
+            if (ellipse == null || !ellipse.IsVisible) continue;
+            try
+            {
+                var center = new Point(ellipse.ActualWidth / 2, ellipse.ActualHeight / 2);
+                var transform = ellipse.TransformToVisual(CanvasContainer);
+                var pos = transform.Transform(center);
+                var dx = pos.X - canvasContainerPos.X;
+                var dy = pos.Y - canvasContainerPos.Y;
+                var dist = Math.Sqrt(dx * dx + dy * dy);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = portVm;
+                }
+            }
+            catch
+            {
+                // 元素可能尚未完全渲染，跳过
+            }
         }
 
-        return null;
+        return best;
     }
 
     // ════════════════ 鼠标移动（统一处理拖拽、连线、平移） ════════════════
@@ -567,15 +590,15 @@ public partial class MainWindow : Window
 
     private void CanvasArea_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // 关闭已有的弹窗（第二次右键替换第一次）
+        // 关闭已有弹窗（第二次右键替换第一次）
         CloseSearchWindow();
 
-        // 获取鼠标在画布逻辑坐标系中的位置
+        // 获取鼠标位置
         var screenPos = e.GetPosition(CanvasArea);
         var canvasPos = ScreenToCanvas(screenPos);
 
-        // 弹出搜索窗口（非模态）
-        _searchWindow = new NodeSearchWindow(
+        // 创建搜索面板
+        var panel = new NodeSearchWindow(
             _viewModel.Discovery.GetAllDescriptors(),
             typeId =>
             {
@@ -585,17 +608,24 @@ public partial class MainWindow : Window
                 UpdateStatus(desc != null ? $"已创建节点: {desc.DisplayName}" : "节点已创建");
             });
 
-        // 在鼠标位置显示窗口
-        var mouseScreenPos = PointToScreen(screenPos);
-        _searchWindow.Left = mouseScreenPos.X;
-        _searchWindow.Top = mouseScreenPos.Y;
-        _searchWindow.Owner = this;
+        panel.RequestClose += CloseSearchWindow;
 
-        // 窗口关闭时清空引用
-        _searchWindow.Closed += (_, _) => _searchWindow = null;
-
-        _searchWindow.Show();
-        _searchWindow.Activate(); // 确保非模态窗口立即获得焦点
+        // 用 Popup 承载，嵌入主窗口（非独立窗口）
+        _searchPopup = new Popup
+        {
+            Child = panel,
+            AllowsTransparency = true,
+            Placement = PlacementMode.Relative,
+            PlacementTarget = CanvasArea,
+            HorizontalOffset = screenPos.X,
+            VerticalOffset = screenPos.Y,
+            StaysOpen = true
+        };
+        // 注意：不使用 PopupAnimation.Fade —— 淡出动画是异步的，
+        // 会导致旧 Popup 的 Closed 事件晚于新 Popup 创建，从而 null 掉新引用。
+        // Closed 仅在当前引用匹配时清理，防止竞态。
+        _searchPopup.Closed += (s, _) => { if (ReferenceEquals(s, _searchPopup)) _searchPopup = null; };
+        _searchPopup.IsOpen = true;
 
         e.Handled = true;
     }
@@ -603,11 +633,10 @@ public partial class MainWindow : Window
     /// <summary>关闭搜索弹窗（如果存在）</summary>
     private void CloseSearchWindow()
     {
-        if (_searchWindow != null)
+        if (_searchPopup != null)
         {
-            var w = _searchWindow;
-            _searchWindow = null;
-            w.Close();
+            _searchPopup.IsOpen = false;
+            _searchPopup = null;
         }
     }
 
