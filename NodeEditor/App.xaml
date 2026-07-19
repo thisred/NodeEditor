@@ -1,0 +1,89 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:NodeEditor"
+             xmlns:conv="clr-namespace:NodeEditor.Converters"
+             x:Class="NodeEditor.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- 全局转换器 -->
+            <conv:InverseBoolConverter x:Key="InverseBool" />
+            <conv:ZoomToPercentConverter x:Key="ZoomPercent" />
+
+            <!-- ═══ 标题栏菜单按钮样式（扁平、无框、类似 VS Code 菜单栏） ═══ -->
+            <Style x:Key="TitleBarMenuButton" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="#CCCCCC" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="BorderWidth" Value="0" />
+                <Setter Property="Padding" Value="8,2" />
+                <Setter Property="CornerRadius" Value="3" />
+                <Setter Property="MinimumHeightRequest" Value="0" />
+                <Setter Property="VerticalOptions" Value="Center" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup Name="CommonStates">
+                            <VisualState Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="Transparent" />
+                                    <Setter Property="TextColor" Value="#CCCCCC" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#33FFFFFF" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#22FFFFFF" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- ═══ 标题栏执行按钮样式 ═══ -->
+            <Style x:Key="TitleBarExecButton" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="#3A6B3A" />
+                <Setter Property="TextColor" Value="White" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="BorderWidth" Value="0" />
+                <Setter Property="CornerRadius" Value="3" />
+                <Setter Property="Padding" Value="8,2" />
+                <Setter Property="MinimumHeightRequest" Value="0" />
+                <Setter Property="VerticalOptions" Value="Center" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup Name="CommonStates">
+                            <VisualState Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#3A6B3A" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#4A8B4A" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#2A5B2A" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -25,7 +25,7 @@ public class OnStartNode : NodeBase
 /// 图结束事件 — 在所有 OnStart 链执行完毕后触发。
 /// 只有执行输出端口，可连接清理/收尾动作。
 /// </summary>
-[Node("OnEnd", Category = "生命周期", Color = "#E68A00", Description = "图结束时触发（OnStart 链完成后）", Kind = NodeKind.Event)]
+[Node("OnEnd", Category = "生命周期", Color = "#E68A00", Description = "图结束时触发（OnStart 链完成后）", Kind = NodeKind.Event, ExecutionOrder = 100)]
 public class OnEndNode : NodeBase
 {
     [ExecOutput("结束")] public NodePort ExecOut { get; set; } = null!;

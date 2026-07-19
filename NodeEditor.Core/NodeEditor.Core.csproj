@@ -9,6 +9,7 @@
     <ItemGroup>
         <InternalsVisibleTo Include="NodeEditor.Serialization"/>
         <InternalsVisibleTo Include="NodeEditor.Wpf"/>
+        <InternalsVisibleTo Include="NodeEditor"/>
     </ItemGroup>
 
 </Project>

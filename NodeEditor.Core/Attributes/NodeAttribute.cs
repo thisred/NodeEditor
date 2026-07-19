@@ -25,6 +25,12 @@ public class NodeAttribute : Attribute
     /// <summary>节点种类（默认 Get，纯数据节点）</summary>
     public NodeKind Kind { get; set; } = NodeKind.Get;
 
+    /// <summary>
+    /// 事件节点的执行顺序（仅对 Kind = Event 生效，值越小越先执行）。
+    /// 例如 OnStart 用默认 0，OnEnd 用较大的值以保证在所有 OnStart 链之后执行。
+    /// </summary>
+    public int ExecutionOrder { get; set; }
+
     public NodeAttribute(string displayName)
     {
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));

@@ -48,17 +48,26 @@ public abstract class NodeBase
     /// <summary>节点种类（来自 [Node] 特性）</summary>
     public NodeKind Kind { get; private set; } = NodeKind.Get;
 
+    /// <summary>事件节点执行顺序（来自 [Node] 特性，值越小越先执行）</summary>
+    public int ExecutionOrder { get; private set; }
+
     /// <summary>节点类型全名（用于序列化时的类型恢复）</summary>
     public string TypeName => GetType().AssemblyQualifiedName!;
 
     /// <summary>该节点的所有端口</summary>
     public List<NodePort> Ports { get; } = new();
 
+    // 端口在构造后不再变化，缓存分组结果避免每次访问都做 LINQ 过滤和分配
+    private IReadOnlyList<NodePort>? _inputPorts;
+    private IReadOnlyList<NodePort>? _outputPorts;
+
     /// <summary>输入端口列表</summary>
-    public IReadOnlyList<NodePort> InputPorts => Ports.Where(p => p.Direction == PortDirection.Input).ToList();
+    public IReadOnlyList<NodePort> InputPorts =>
+        _inputPorts ??= Ports.Where(p => p.Direction == PortDirection.Input).ToList();
 
     /// <summary>输出端口列表</summary>
-    public IReadOnlyList<NodePort> OutputPorts => Ports.Where(p => p.Direction == PortDirection.Output).ToList();
+    public IReadOnlyList<NodePort> OutputPorts =>
+        _outputPorts ??= Ports.Where(p => p.Direction == PortDirection.Output).ToList();
 
     /// <summary>端口属性名 → NodePort 的映射（用于序列化时按属性名引用端口）</summary>
     private readonly Dictionary<string, NodePort> _portByName = new();
@@ -87,6 +96,7 @@ public abstract class NodeBase
             Color = attr.Color;
             Description = attr.Description;
             Kind = attr.Kind;
+            ExecutionOrder = attr.ExecutionOrder;
         }
         else
         {

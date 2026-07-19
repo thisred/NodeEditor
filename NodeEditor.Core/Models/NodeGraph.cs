@@ -300,16 +300,14 @@ public class NodeGraph
         }
 
         // 2. 从事件节点出发，沿执行端口链执行
-        //    先执行 OnStart 链，再执行 OnEnd 链
+        //    按 ExecutionOrder 升序执行（OnStart=0 先执行，OnEnd 用较大值最后执行）
         var visited = new HashSet<string>();
-        var eventNodes = Nodes.Where(n => n.Kind == NodeKind.Event).ToList();
+        var eventNodes = Nodes
+            .Where(n => n.Kind == NodeKind.Event)
+            .OrderBy(n => n.ExecutionOrder)
+            .ToList();
 
-        // Start 事件优先（OnStart、Begin 等）
-        foreach (var eventNode in eventNodes.Where(n => !IsEndEvent(n)))
-            ExecuteFromNode(eventNode, visited);
-
-        // End 事件最后（OnEnd、End 等）
-        foreach (var eventNode in eventNodes.Where(IsEndEvent))
+        foreach (var eventNode in eventNodes)
             ExecuteFromNode(eventNode, visited);
     }
 
@@ -334,12 +332,6 @@ public class NodeGraph
             }
         }
     }
-
-    /// <summary>
-    /// 判断是否为“结束”事件（DisplayName 包含 End）。
-    /// </summary>
-    private static bool IsEndEvent(NodeBase node) =>
-        node.DisplayName.Contains("End", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>清空图中所有节点和连线</summary>
     public void Clear()
