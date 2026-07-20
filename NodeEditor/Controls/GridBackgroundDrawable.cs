@@ -8,8 +8,10 @@ public class GridBackgroundDrawable : IDrawable
     public float Zoom { get; set; } = 1f;
     public float PanX { get; set; }
     public float PanY { get; set; }
+
     /// <summary>画布视口宽度的一半（用于中心锚点补偿）</summary>
     public float CenterX { get; set; }
+
     /// <summary>画布视口高度的一半</summary>
     public float CenterY { get; set; }
 
@@ -18,10 +20,13 @@ public class GridBackgroundDrawable : IDrawable
 
     /// <summary>将画布逻辑坐标 X 转换为屏幕坐标 X（含中心锚点补偿）</summary>
     private float ToScreenX(float canvasX) => canvasX * Zoom + CenterX * (1 - Zoom) + PanX;
+
     /// <summary>将画布逻辑坐标 Y 转换为屏幕坐标 Y</summary>
     private float ToScreenY(float canvasY) => canvasY * Zoom + CenterY * (1 - Zoom) + PanY;
+
     /// <summary>将屏幕坐标 X 转换为画布逻辑坐标 X</summary>
     private float ToCanvasX(float screenX) => (screenX - PanX - CenterX * (1 - Zoom)) / Zoom;
+
     /// <summary>将屏幕坐标 Y 转换为画布逻辑坐标 Y</summary>
     private float ToCanvasY(float screenY) => (screenY - PanY - CenterY * (1 - Zoom)) / Zoom;
 

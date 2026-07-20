@@ -73,8 +73,14 @@ public class MinimapDrawable : IDrawable
 
     private static Color ParseColorSafe(string hex)
     {
-        try { return Color.FromArgb(hex).WithAlpha(0.8f); }
-        catch { return Colors.Gray.WithAlpha(0.8f); }
+        try
+        {
+            return Color.FromArgb(hex).WithAlpha(0.8f);
+        }
+        catch
+        {
+            return Colors.Gray.WithAlpha(0.8f);
+        }
     }
 
     /// <summary>

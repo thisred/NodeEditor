@@ -15,7 +15,7 @@ namespace NodeEditor;
 
 public partial class MainPage : ContentPage
 {
-    private const double NodeWidth = NodeViewModel.ApproxWidth;
+     private const double NodeWidth = NodeViewModel.ApproxWidth;
 
     private readonly EditorViewModel _viewModel;
     private readonly ConnectionDrawable _connectionDrawable;
@@ -34,6 +34,10 @@ public partial class MainPage : ContentPage
     // ── 连线拖拽状态 ──
     private bool _isDraggingConnection;
     private PortViewModel? _connectionSourcePort;
+    // 连线拖拽期间用定时器轮询全局光标位置：即使指针移出画布/窗口，连线端点仍跟随光标。
+    // （连线起点在节点卡片上，用 CapturePointer 会与卡片的 MAUI 手势冲突导致"全局变色"，
+    //  故改用 GetCursorPos 轮询，不依赖指针捕获。）
+    private IDispatcherTimer? _connectionDragTimer;
 
     // ── 端口元素追踪（缓存布局元数据：方向/所属节点/行索引，避免每帧 IndexOf） ──
     private readonly Dictionary<PortViewModel, (bool IsInput, NodeViewModel Node, int Index)> _portElements = new();
@@ -212,6 +216,7 @@ public partial class MainPage : ContentPage
         base.OnDisappearing();
         _autoSaveTimer?.Stop();
         _menuHoverTimer?.Stop();
+        _connectionDragTimer?.Stop();
 
         // 取消挂载原生事件
         if (_nativeCanvasElement != null)
@@ -275,11 +280,12 @@ public partial class MainPage : ContentPage
     
         if (props.IsMiddleButtonPressed)
         {
-            // 中键平移：不 CapturePointer，避免指针被画布独占导致按钮等元素
-            // 收不到指针事件、视觉状态错乱（"全局变色" bug）。
+            // 中键平移：捕获指针，使指针移出画布范围后仍能收到 Moved/Released，
+            // 拖拽不会"停在背景边缘"。仅拖拽期间捕获、抬起即释放，不影响按钮视觉状态。
             e.Handled = true;
             _isMiddleButtonPanning = true;
             _middleButtonLastPos = new Point(pos.X, pos.Y);
+            (sender as Microsoft.UI.Xaml.UIElement)?.CapturePointer(e.Pointer);
         }
         else if (props.IsLeftButtonPressed)
         {
@@ -295,8 +301,9 @@ public partial class MainPage : ContentPage
                 _potentialBoxSelect = false;
                 _viewModel.StartPendingConnection(port);
                 UpdateStatus("拖拽到目标端口以创建连线");
-                // 不 CapturePointer —— 会导致 WinUI 视觉状态错乱（"全局变色" bug）
-                // AddHandler(handledEventsToo: true) 已保证 Moved/Released 事件不丢失
+                // 不用 CapturePointer（起点在节点卡片上，会与卡片 MAUI 手势冲突导致"全局变色"）。
+                // 改用定时器轮询全局光标，使指针移出画布/窗口时连线端点仍跟随。
+                StartConnectionDragTracking();
                 return;
             }
     
@@ -311,8 +318,8 @@ public partial class MainPage : ContentPage
                 e.Handled = true;
                 _potentialBoxSelect = true;
                 _boxSelectStart = new Point(pos.X, pos.Y);
-                // 不 CapturePointer —— 会导致 WinUI 视觉状态错乱（"全局变色" bug）
-                // AddHandler(handledEventsToo: true) 已保证 Moved/Released 事件不丢失
+                // 此时尚不确定是框选还是普通点击，暂不捕获指针；
+                // 待 Moved 中确认为拖拽（越过阈值）后再 CapturePointer。
             }
         }
     }
@@ -401,6 +408,7 @@ public partial class MainPage : ContentPage
             _viewModel.CompletePendingConnection(targetPort);
             _connectionSourcePort = null;
             _isDraggingConnection = false;
+            StopConnectionDragTracking();
             RefreshConnections();
             UpdateStatus(targetPort != null ? "连线已创建" : "连线已取消");
             return;
@@ -452,6 +460,76 @@ public partial class MainPage : ContentPage
             }
         }
     }
+
+    // ── 连线拖拽：全局光标轮询（覆盖"指针移出画布/窗口"场景，不依赖 CapturePointer）──
+
+    private void StartConnectionDragTracking()
+    {
+        if (_connectionDragTimer == null)
+        {
+            _connectionDragTimer = Dispatcher.CreateTimer();
+            _connectionDragTimer.Interval = TimeSpan.FromMilliseconds(16);
+            _connectionDragTimer.Tick += OnConnectionDragTick;
+        }
+        _connectionDragTimer.Start();
+    }
+
+    private void StopConnectionDragTracking() => _connectionDragTimer?.Stop();
+
+    private void OnConnectionDragTick(object? sender, EventArgs e)
+    {
+        if (!_isDraggingConnection)
+        {
+            StopConnectionDragTracking();
+            return;
+        }
+
+        var canvasPos = GetCursorCanvasPosition();
+        if (canvasPos == null) return;
+
+        // 指针在窗口外松开时，原生 Released 事件不会触发，这里用全局按键状态兜底检测松开。
+        bool leftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+        if (!leftDown)
+        {
+            var targetPort = FindPortNearPosition(canvasPos.Value);
+            if (targetPort == _connectionSourcePort) targetPort = null;
+            _viewModel.CompletePendingConnection(targetPort);
+            _connectionSourcePort = null;
+            _isDraggingConnection = false;
+            StopConnectionDragTracking();
+            RefreshConnections();
+            UpdateStatus(targetPort != null ? "连线已创建" : "连线已取消");
+            return;
+        }
+
+        _viewModel.UpdatePendingConnection(canvasPos.Value.X, canvasPos.Value.Y);
+        SyncConnectionDrawable();
+        ConnectionsView.Invalidate();
+    }
+
+    /// <summary>用全局光标位置（可在窗口外）换算成画布坐标。</summary>
+    private Point? GetCursorCanvasPosition()
+    {
+        if (_nativeCanvasElement == null) return null;
+        if (!GetCursorPos(out var pt)) return null;
+        var hwnd = GetActiveWindowHandle();
+        if (hwnd == IntPtr.Zero) return null;
+        ScreenToClient(hwnd, ref pt);
+
+        // GetCursorPos/ScreenToClient 返回物理像素，TransformToVisual 用逻辑像素(DIPs)，需统一。
+        var scale = _nativeCanvasElement.XamlRoot?.RasterizationScale ?? 1.0;
+        var logicalX = pt.X / scale;
+        var logicalY = pt.Y / scale;
+
+        // 画布元素在窗口根坐标系中的原点（逻辑像素）
+        var canvasOrigin = _nativeCanvasElement.TransformToVisual(null)
+            .TransformPoint(new Windows.Foundation.Point(0, 0));
+        return ScreenToCanvas(new Point(logicalX - canvasOrigin.X, logicalY - canvasOrigin.Y));
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+    private const int VK_LBUTTON = 0x01;
 
     private void OnNativeKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -981,7 +1059,9 @@ public partial class MainPage : ContentPage
             Content = contentStack,
             BackgroundColor = Color.FromArgb("#2D2D30"),
             Stroke = nodeVm.IsSelected ? Color.FromArgb("#007ACC") : Color.FromArgb("#3F3F46"),
-            StrokeThickness = nodeVm.IsSelected ? 1.5 : 1,
+            // 厚度保持恒定：选中只切换颜色，不改厚度。否则 Border 内容区会随描边变粗而内缩，
+            // 导致选中时节点内文字/端口相对圆点位移（"选中后布局变了"）。
+            StrokeThickness = 1.5,
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 5 },
             WidthRequest = NodeWidth
         };
@@ -1009,7 +1089,7 @@ public partial class MainPage : ContentPage
             if (e.PropertyName == nameof(NodeViewModel.IsSelected))
             {
                 cardBorder.Stroke = nodeVm.IsSelected ? Color.FromArgb("#007ACC") : Color.FromArgb("#3F3F46");
-                cardBorder.StrokeThickness = nodeVm.IsSelected ? 1.5 : 1;
+                // 厚度恒定，仅切颜色（见 cardBorder 创建处说明），避免选中导致内容重排位移
             }
         };
 
@@ -1255,7 +1335,7 @@ public partial class MainPage : ContentPage
             if (border != null)
             {
                 border.Stroke = nodeVm.IsSelected ? Color.FromArgb("#007ACC") : Color.FromArgb("#3F3F46");
-                border.StrokeThickness = nodeVm.IsSelected ? 1.5 : 1;
+                // 厚度恒定，仅切颜色，避免选中导致内容重排位移
             }
         }
     }

@@ -69,6 +69,7 @@ public class PrintActionNode : NodeBase
             var connectedPort = port.GetConnectedPort();
             return connectedPort?.Value?.ToString() ?? "";
         }
+
         return port.Value?.ToString() ?? "";
     }
 }

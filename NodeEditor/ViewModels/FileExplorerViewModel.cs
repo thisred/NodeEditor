@@ -16,6 +16,7 @@ public class FileItemViewModel : ViewModelBase
     public string FilePath { get; }
 
     private bool _isActive;
+
     public bool IsActive
     {
         get => _isActive;
@@ -23,6 +24,7 @@ public class FileItemViewModel : ViewModelBase
     }
 
     private bool _isDirty;
+
     public bool IsDirty
     {
         get => _isDirty;
@@ -42,6 +44,7 @@ public class FileItemViewModel : ViewModelBase
 public class FileExplorerViewModel : ViewModelBase
 {
     private string? _workspacePath;
+
     public string? WorkspacePath
     {
         get => _workspacePath;
@@ -57,6 +60,7 @@ public class FileExplorerViewModel : ViewModelBase
     public ObservableCollection<FileItemViewModel> Files { get; } = new();
 
     private FileItemViewModel? _activeFile;
+
     public FileItemViewModel? ActiveFile
     {
         get => _activeFile;
@@ -70,6 +74,7 @@ public class FileExplorerViewModel : ViewModelBase
     }
 
     private bool _isCollapsed;
+
     public bool IsCollapsed
     {
         get => _isCollapsed;
@@ -135,6 +140,7 @@ public class FileExplorerViewModel : ViewModelBase
                 item.IsActive = true;
                 _activeFile = item;
             }
+
             Files.Add(item);
         }
 
@@ -161,6 +167,7 @@ public class FileExplorerViewModel : ViewModelBase
             RefreshFiles();
             item = Files.FirstOrDefault(f => f.FilePath == filePath);
         }
+
         ActiveFile = item;
     }
 

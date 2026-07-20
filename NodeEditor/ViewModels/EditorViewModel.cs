@@ -26,6 +26,7 @@ public class EditorViewModel : ViewModelBase
 
     // ── 选中状态 ──
     private NodeViewModel? _selectedNode;
+
     public NodeViewModel? SelectedNode
     {
         get => _selectedNode;
@@ -80,11 +81,13 @@ public class EditorViewModel : ViewModelBase
                 last = n;
             }
         }
+
         if (last != null) SelectedNode = last;
     }
 
     // ── 画布变换 ──
     private double _zoom = 1.0;
+
     public double Zoom
     {
         get => _zoom;
@@ -92,6 +95,7 @@ public class EditorViewModel : ViewModelBase
     }
 
     private double _panX;
+
     public double PanX
     {
         get => _panX;
@@ -99,6 +103,7 @@ public class EditorViewModel : ViewModelBase
     }
 
     private double _panY;
+
     public double PanY
     {
         get => _panY;
@@ -107,6 +112,7 @@ public class EditorViewModel : ViewModelBase
 
     // ── 临时连线 ──
     private PortViewModel? _pendingSourcePort;
+
     public PortViewModel? PendingSourcePort
     {
         get => _pendingSourcePort;
@@ -120,6 +126,7 @@ public class EditorViewModel : ViewModelBase
     public bool HasPendingConnection => PendingSourcePort != null;
 
     private double _pendingX;
+
     public double PendingX
     {
         get => _pendingX;
@@ -127,6 +134,7 @@ public class EditorViewModel : ViewModelBase
     }
 
     private double _pendingY;
+
     public double PendingY
     {
         get => _pendingY;
@@ -163,6 +171,7 @@ public class EditorViewModel : ViewModelBase
     private bool _isLoading;
 
     private bool _isDirty;
+
     public bool IsDirty
     {
         get => _isDirty;
@@ -213,6 +222,7 @@ public class EditorViewModel : ViewModelBase
         {
             _isLoading = false;
         }
+
         FileExplorer.SetActiveFile(filePath);
         FileExplorer.MarkActiveFileClean();
         IsDirty = false;
@@ -305,6 +315,7 @@ public class EditorViewModel : ViewModelBase
             if (SelectedNode == nvm)
                 SelectedNode = GetSelectedNodes().LastOrDefault();
         }
+
         MarkDirty();
     }
 
@@ -372,6 +383,7 @@ public class EditorViewModel : ViewModelBase
             sourceNodeVm?.GetPortViewModel(conn.SourcePortId)?.RefreshConnectionState();
             targetNodeVm?.GetPortViewModel(conn.TargetPortId)?.RefreshConnectionState();
         }
+
         MarkDirty();
     }
 
@@ -406,6 +418,7 @@ public class EditorViewModel : ViewModelBase
             CancelPendingConnection();
             return false;
         }
+
         var success = TryConnect(PendingSourcePort, targetPort);
         CancelPendingConnection();
         return success;
@@ -493,6 +506,7 @@ public class EditorViewModel : ViewModelBase
         {
             _isLoading = false;
         }
+
         IsDirty = false;
         FileExplorer.MarkActiveFileClean();
         OnPropertyChanged(nameof(WindowTitle));

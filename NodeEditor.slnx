@@ -1,7 +1,7 @@
 <Solution>
-    <Project Path="NodeEditor.Core/NodeEditor.Core.csproj" />
-    <Project Path="NodeEditor.Samples/NodeEditor.Samples.csproj" />
-    <Project Path="NodeEditor.Serialization/NodeEditor.Serialization.csproj" />
-    <Project Path="NodeEditor.Wpf/NodeEditor.Wpf.csproj" />
-    <Project Path="NodeEditor/NodeEditor.csproj" />
+    <Project Path="NodeEditor.Core/NodeEditor.Core.csproj"/>
+    <Project Path="NodeEditor.Samples/NodeEditor.Samples.csproj"/>
+    <Project Path="NodeEditor.Serialization/NodeEditor.Serialization.csproj"/>
+    <Project Path="NodeEditor.Wpf/NodeEditor.Wpf.csproj"/>
+    <Project Path="NodeEditor/NodeEditor.csproj"/>
 </Solution>

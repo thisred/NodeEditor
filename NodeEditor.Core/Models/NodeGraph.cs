@@ -369,15 +369,15 @@ public class NodeGraph
     /// </summary>
     private static readonly Dictionary<Type, int> s_numericRank = new()
     {
-        { typeof(sbyte),  0 },
-        { typeof(byte),   1 },
-        { typeof(short),  2 },
+        { typeof(sbyte), 0 },
+        { typeof(byte), 1 },
+        { typeof(short), 2 },
         { typeof(ushort), 3 },
-        { typeof(int),    4 },
-        { typeof(uint),   5 },
-        { typeof(long),   6 },
-        { typeof(ulong),  7 },
-        { typeof(float),  8 },
+        { typeof(int), 4 },
+        { typeof(uint), 5 },
+        { typeof(long), 6 },
+        { typeof(ulong), 7 },
+        { typeof(float), 8 },
         { typeof(double), 9 },
     };
 

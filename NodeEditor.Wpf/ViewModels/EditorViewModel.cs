@@ -189,6 +189,7 @@ public class EditorViewModel : ViewModelBase
     private bool _isLoading;
 
     private bool _isDirty;
+
     /// <summary>当前图是否有未保存的变更</summary>
     public bool IsDirty
     {
@@ -244,6 +245,7 @@ public class EditorViewModel : ViewModelBase
         {
             _isLoading = false;
         }
+
         FileExplorer.SetActiveFile(filePath);
         FileExplorer.MarkActiveFileClean();
         IsDirty = false;
@@ -354,6 +356,7 @@ public class EditorViewModel : ViewModelBase
             if (SelectedNode == nvm)
                 SelectedNode = GetSelectedNodes().LastOrDefault();
         }
+
         MarkDirty();
     }
 
@@ -428,6 +431,7 @@ public class EditorViewModel : ViewModelBase
             sourceNodeVm?.GetPortViewModel(conn.SourcePortId)?.RefreshConnectionState();
             targetNodeVm?.GetPortViewModel(conn.TargetPortId)?.RefreshConnectionState();
         }
+
         MarkDirty();
     }
 
@@ -554,6 +558,7 @@ public class EditorViewModel : ViewModelBase
         {
             _isLoading = false;
         }
+
         IsDirty = false;
         FileExplorer.MarkActiveFileClean();
         OnPropertyChanged(nameof(WindowTitle));

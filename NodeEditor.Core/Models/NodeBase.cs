@@ -273,8 +273,15 @@ public abstract class NodeBase
         // 数值类型转换：boxed int → double 等
         if (value != null)
         {
-            try { return (T)Convert.ChangeType(value, typeof(T)); } catch { }
+            try
+            {
+                return (T)Convert.ChangeType(value, typeof(T));
+            }
+            catch
+            {
+            }
         }
+
         return defaultValue;
     }
 
