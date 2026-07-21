@@ -286,14 +286,28 @@ public class EditorViewModel : ViewModelBase
             AvailableNodes.Add(new NodeCategoryViewModel(category, descriptors));
     }
 
-    public void CreateNode(string? typeId, double x = 200, double y = 150)
+    /// <summary>
+    /// 创建节点。指定 x/y 时精确放置（右键创建）；
+    /// 未指定时使用默认位置并级联偏移（菜单/命令创建）。
+    /// </summary>
+    public void CreateNode(string? typeId, double? x = null, double? y = null)
     {
         if (string.IsNullOrEmpty(typeId)) return;
         var node = Discovery.CreateNode(typeId);
         if (node == null) return;
-        _nodeCounter++;
-        node.X = x + _nodeCounter * 30;
-        node.Y = y + _nodeCounter * 30;
+
+        if (x.HasValue && y.HasValue)
+        {
+            node.X = x.Value;
+            node.Y = y.Value;
+        }
+        else
+        {
+            _nodeCounter++;
+            node.X = 200 + (_nodeCounter % 10) * 30;
+            node.Y = 150 + (_nodeCounter % 10) * 30;
+        }
+
         Graph.AddNode(node);
     }
 
@@ -521,6 +535,9 @@ public class EditorViewModel : ViewModelBase
 
     // ── 复制/粘贴 ──
 
+    // 连续粘贴计数：每次粘贴累加偏移，避免多次粘贴的节点重叠在同一位置
+    private int _pasteCounter;
+
     public async void CopySelectedNodes()
     {
         try
@@ -531,6 +548,7 @@ public class EditorViewModel : ViewModelBase
             var nodeIds = new HashSet<string>(selected.Select(n => n.Id));
             var json = Serializer.SerializeNodes(Graph, nodeIds);
             await Clipboard.SetTextAsync(json);
+            _pasteCounter = 0; // 新复制后重置级联偏移
         }
         catch (Exception ex)
         {
@@ -545,7 +563,12 @@ public class EditorViewModel : ViewModelBase
             var json = await Clipboard.GetTextAsync();
             if (string.IsNullOrEmpty(json)) return;
 
-            var pastedGraph = Serializer.DeserializeWithNewIds(json, offsetX, offsetY);
+            // 级联偏移：第 N 次粘贴偏移 N*(offsetX, offsetY)。
+            // 剪贴板内容在多次粘贴间不变，若用固定偏移，所有粘贴的节点会重叠在
+            // 同一坐标，看起来像“只能粘贴一次”。
+            _pasteCounter++;
+            var pastedGraph = Serializer.DeserializeWithNewIds(
+                json, offsetX * _pasteCounter, offsetY * _pasteCounter);
             DeselectAll();
             Graph.ImportFrom(pastedGraph);
 
@@ -559,9 +582,9 @@ public class EditorViewModel : ViewModelBase
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            /* 剪贴板内容无效或读取失败 */
+            ExecutionLogger.Log($"粘贴失败：{ex.Message}");
         }
     }
 }

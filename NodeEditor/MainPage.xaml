@@ -60,7 +60,7 @@
 
     </ContentPage.Resources>
 
-    <Grid x:Name="RootGrid" RowDefinitions="*,150" ColumnDefinitions="220,*,270">
+    <Grid x:Name="RootGrid" RowDefinitions="*,150,20" ColumnDefinitions="220,*,270">
         <!-- ═══ 左栏：文件浏览器 ═══ -->
         <!-- ZIndex 高于画布：节点平移到画布外时会溢出到侧栏屏幕区域（MAUI 的 Clip 只裁剪渲染、
              不裁剪命中测试），提高 ZIndex 让侧栏挡住这些不可见节点的点击 -->
@@ -211,8 +211,7 @@
                                         <!-- 其他：文本框 -->
                                         <Entry Text="{Binding ValueText, Mode=TwoWay}"
                                                IsVisible="{Binding IsBool, Converter={StaticResource InverseBool}}"
-                                               BackgroundColor="#3A3A3A" TextColor="#CCC"
-                                               FontSize="12" />
+                                               FontSize="12" HeightRequest="28" />
                                     </VerticalStackLayout>
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
@@ -257,21 +256,23 @@
                     </Grid>
                 </Border>
 
-                <!-- 日志内容（用 ScrollView+Label 代替 Editor，避免原生 TextBox 边框白线） -->
-                <ScrollView x:Name="LogScroll" Grid.Row="1" BackgroundColor="#1E1E1E"
-                            IsVisible="True" VerticalScrollBarVisibility="Always">
-                    <Label x:Name="LogOutput" Text="" TextColor="#CCC"
-                           FontFamily="Consolas" FontSize="12"
-                           Padding="6,4" LineBreakMode="WordWrap" />
-                </ScrollView>
+                <!-- 日志内容（只读 Editor：文本可选中复制；原生 TextBox 边框在后台移除） -->
+                <Editor x:Name="LogOutput" Grid.Row="1"
+                        Text="" TextColor="#CCC" BackgroundColor="#1E1E1E"
+                        FontFamily="Consolas" FontSize="12"
+                        IsReadOnly="True" AutoSize="Disabled"
+                        VerticalOptions="Fill" HorizontalOptions="Fill" />
 
             </Grid>
         </Border>
 
-        <!-- 状态标签：窗口最左下角（声明在最后 → 渲染在最上层，不被 Console 遮挡） -->
-        <Label x:Name="TitleBarStatusLabel" Grid.Row="1" Grid.Column="0"
-               TextColor="#999999" FontSize="11"
-               VerticalOptions="End" HorizontalOptions="Start"
-               Margin="8,0,0,4" ZIndex="100" InputTransparent="True" />
+        <!-- ═══ 底部状态栏（独立一行，VS Code 风格，不与 Console 重叠） ═══ -->
+        <Border Grid.Row="2" Grid.ColumnSpan="3" BackgroundColor="#2D2D2D"
+                Stroke="#3F3F3F" StrokeThickness="0">
+            <Label x:Name="TitleBarStatusLabel"
+                   TextColor="#999999" FontSize="11"
+                   VerticalTextAlignment="Center" HorizontalTextAlignment="Start"
+                   Margin="10,0" InputTransparent="True" />
+        </Border>
     </Grid>
 </ContentPage>

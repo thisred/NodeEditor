@@ -72,6 +72,9 @@ public partial class MainPage : ContentPage
     // ── 标题栏 ──
     private Label? _titleBarStatusText;
 
+    // ── 日志面板（原生 TextBox 引用，用于去边框、允许选中、自动滚底） ──
+    private Microsoft.UI.Xaml.Controls.TextBox? _logTextBox;
+
     // ── 菜单栏状态 ──
     private Microsoft.UI.Xaml.Controls.MenuFlyout? _currentMenuFlyout;
     private Button? _currentMenuButton;
@@ -131,6 +134,19 @@ public partial class MainPage : ContentPage
         // 订阅日志
         ExecutionLogger.LogAdded += OnLogAdded;
         ExecutionLogger.Cleared += OnLogCleared;
+
+        // 日志控件原生定制：移除原生 TextBox 边框/背景。
+        // WinUI 3 只读 TextBox 本身就支持选中/复制（无需 WPF 的 IsReadOnlyCaretEnabled）。
+        LogOutput.HandlerChanged += (s, e) =>
+        {
+            if (LogOutput.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.TextBox logTb)
+            {
+                _logTextBox = logTb;
+                logTb.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+                logTb.BorderBrush = null;
+                logTb.Padding = new Microsoft.UI.Xaml.Thickness(6, 4, 6, 4);
+            }
+        };
 
         // 窗口标题
         _viewModel.PropertyChanged += (s, e) =>
@@ -540,7 +556,11 @@ public partial class MainPage : ContentPage
             return;
         }
 
-        if (key == Windows.System.VirtualKey.Delete)
+        // 焦点在文本输入控件（日志框/属性输入框）时，Delete/Ctrl+C/Ctrl+V 应作用于文本
+        // （选中复制/粘贴/删除字符），不触发全局节点快捷键；Ctrl+S、F11 仍保持全局。
+        var inTextBox = e.OriginalSource is Microsoft.UI.Xaml.Controls.TextBox;
+
+        if (key == Windows.System.VirtualKey.Delete && !inTextBox)
         {
             var count = _viewModel.GetSelectedNodes().Count;
             _viewModel.DeleteSelectedNode();
@@ -548,14 +568,14 @@ public partial class MainPage : ContentPage
             UpdateStatus(count > 0 ? $"已删除 {count} 个节点" : "");
             e.Handled = true;
         }
-        else if (_isCtrlPressed && key == Windows.System.VirtualKey.C)
+        else if (_isCtrlPressed && key == Windows.System.VirtualKey.C && !inTextBox)
         {
             _viewModel.CopySelectedNodes();
             var count = _viewModel.GetSelectedNodes().Count;
             UpdateStatus(count > 0 ? $"已复制 {count} 个节点" : "未选中任何节点");
             e.Handled = true;
         }
-        else if (_isCtrlPressed && key == Windows.System.VirtualKey.V)
+        else if (_isCtrlPressed && key == Windows.System.VirtualKey.V && !inTextBox)
         {
             _viewModel.PasteNodes(30, 30);
             UpdateNodeSelectionVisuals();
@@ -846,6 +866,9 @@ public partial class MainPage : ContentPage
         var pos = e.GetPosition(CanvasArea) ?? default;
         var canvasPos = ScreenToCanvas(pos);
 
+        // 双击在节点上时不处理连线（节点双击用于跳转源码，见 OpenNodeSourceInIde）
+        if (IsPointOnNode(canvasPos)) return;
+
         // 双击删除连线
         var hitConn = _connectionDrawable.HitTest(canvasPos.X, canvasPos.Y, 15);
         if (hitConn != null)
@@ -854,6 +877,73 @@ public partial class MainPage : ContentPage
             RefreshConnections();
             UpdateStatus("连线已删除");
         }
+    }
+
+    /// <summary>
+    /// 在 IDE（Rider）中打开节点类的源码定义。
+    /// 通过 SourceLocator 定位类定义的文件与行号，再用 jetbrains:// 协议跳转。
+    /// </summary>
+    private void OpenNodeSourceInIde(NodeViewModel nodeVm)
+    {
+        try
+        {
+            var className = nodeVm.Node.GetType().Name;
+            var (path, line) = Helpers.SourceLocator.FindClassDefinition(className);
+            if (path == null)
+            {
+                UpdateStatus($"未找到 {className} 的源码定义");
+                return;
+            }
+
+            if (TryOpenInRider(path, line))
+            {
+                UpdateStatus($"已在 IDE 打开 {System.IO.Path.GetFileName(path)}:{line}");
+            }
+            else
+            {
+                // 兜底：jetbrains:// 协议（依赖 Toolbox Daemon 转发，可能不可靠）
+                var url = $"jetbrains://rider/open?file={Uri.EscapeDataString(path)}&line={line}";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                UpdateStatus($"已尝试通过协议打开 {System.IO.Path.GetFileName(path)}:{line}");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus($"打开源码失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>直接调用 rider64.exe 打开文件并定位到指定行（Rider 单实例，会转发给运行中的实例）。</summary>
+    private static bool TryOpenInRider(string path, int line)
+    {
+        // 1. 优先从运行中的 Rider 进程取 exe 路径（避免硬编码版本号）
+        string? riderExe = null;
+        try
+        {
+            riderExe = System.Diagnostics.Process.GetProcessesByName("rider64")
+                .FirstOrDefault(p => !p.HasExited)?.MainModule?.FileName;
+        }
+        catch { /* 访问进程模块可能需要权限，失败则走扫描 */ }
+
+        // 2. 兜底：扫描默认安装目录（取最新版本）
+        if (string.IsNullOrEmpty(riderExe) || !System.IO.File.Exists(riderExe))
+        {
+            riderExe = System.IO.Directory.EnumerateDirectories(@"C:\Program Files\JetBrains", "JetBrains Rider*")
+                .Select(d => System.IO.Path.Combine(d, "bin", "rider64.exe"))
+                .Where(System.IO.File.Exists)
+                .OrderByDescending(s => s)
+                .FirstOrDefault();
+        }
+
+        if (string.IsNullOrEmpty(riderExe)) return false;
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = riderExe,
+            Arguments = $"--line {line} \"{path}\"",
+            UseShellExecute = false
+        });
+        return true;
     }
 
     // 框选启动标志：左键按下时若未点中节点则置 true，节点/端口 Pan Started 时置 false
@@ -1082,6 +1172,11 @@ public partial class MainPage : ContentPage
         var dragGesture = new PanGestureRecognizer();
         dragGesture.PanUpdated += (s, e) => OnNodePanUpdated(e, nodeVm);
         cardBorder.GestureRecognizers.Add(dragGesture);
+
+        // 双击手势：在 IDE 中打开节点类的源码定义
+        var openSourceGesture = new TapGestureRecognizer { NumberOfTapsRequired = 2 };
+        openSourceGesture.Tapped += (s, e) => OpenNodeSourceInIde(nodeVm);
+        cardBorder.GestureRecognizers.Add(openSourceGesture);
 
         // 选中状态监听
         nodeVm.PropertyChanged += (s, e) =>
@@ -1360,7 +1455,12 @@ public partial class MainPage : ContentPage
 
         _searchWindow.RequestClose += CloseSearchWindow;
 
-        _searchWindowScreenRect = new Rect(screenPos.X, screenPos.Y, 300, 400);
+        // 将弹窗限制在画布可视区域内，避免超出边界被裁剪导致底部项目不可见
+        const double winW = 300, winH = 400;
+        var posX = Math.Clamp(screenPos.X, 0, Math.Max(0, CanvasArea.Width - winW));
+        var posY = Math.Clamp(screenPos.Y, 0, Math.Max(0, CanvasArea.Height - winH));
+
+        _searchWindowScreenRect = new Rect(posX, posY, winW, winH);
         AbsoluteLayout.SetLayoutBounds(_searchWindow, _searchWindowScreenRect);
         SearchContainer.Children.Add(_searchWindow);
         SearchOverlay.IsVisible = true;
@@ -1479,8 +1579,12 @@ public partial class MainPage : ContentPage
             var time = entry.Timestamp.ToString("HH:mm:ss.fff");
             var node = string.IsNullOrEmpty(entry.NodeName) ? "" : $" [{entry.NodeName}]";
             LogOutput.Text += $"{time}{node}  {entry.Message}\n";
-            // 自动滚动到底部
-            LogScroll.ScrollToAsync(0, LogOutput.Height, false);
+            // 自动滚动到底部：把光标移到文本末尾（WinUI TextBox 会随光标滚动）
+            if (_logTextBox != null)
+            {
+                _logTextBox.SelectionStart = _logTextBox.Text.Length;
+                _logTextBox.SelectionLength = 0;
+            }
         });
     }
 
@@ -1497,7 +1601,7 @@ public partial class MainPage : ContentPage
     private void LogHeader_Tapped(object? sender, TappedEventArgs e)
     {
         _isLogCollapsed = !_isLogCollapsed;
-        LogScroll.IsVisible = !_isLogCollapsed;
+        LogOutput.IsVisible = !_isLogCollapsed;
         LogToggleIndicator.Text = _isLogCollapsed ? "▲" : "▼";
 
         if (_isLogCollapsed)
@@ -1759,7 +1863,7 @@ public partial class MainPage : ContentPage
     private Task<bool> RequestOverwriteConfirmation(string filePath)
     {
         var fileName = System.IO.Path.GetFileName(filePath);
-        return DisplayAlert("文件已存在", $"“{fileName}” 已存在，是否覆盖？", "覆盖", "取消");
+        return DisplayAlertAsync("文件已存在", $"“{fileName}” 已存在，是否覆盖？", "覆盖", "取消");
     }
 
     // ════════════════ ViewModel 属性变化 ════════════════

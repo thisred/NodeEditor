@@ -19,13 +19,11 @@ public partial class NodeSearchWindow : ContentView
     public event Action? RequestClose;
 
     // UI elements
-    private readonly SearchBar _searchBox;
-    private readonly CollectionView _categoryList;
-    private readonly CollectionView _nodeList;
+    private readonly Entry _searchBox;
+    private readonly VerticalStackLayout _itemContainer;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
     private readonly Button _backButton;
-    private readonly Grid _rootGrid;
 
     public NodeSearchWindow(IEnumerable<NodeDescriptor> descriptors, Action<string>? onSelected)
     {
@@ -46,12 +44,15 @@ public partial class NodeSearchWindow : ContentView
         {
             Text = "◀",
             BackgroundColor = Colors.Transparent,
-            TextColor = Color.FromArgb("#999"),
-            FontSize = 14,
-            WidthRequest = 30,
-            HeightRequest = 30,
+            TextColor = Color.FromArgb("#89DCEB"),
+            FontSize = 12,
+            WidthRequest = 24,
+            HeightRequest = 24,
             Padding = 0,
-            IsVisible = false
+            BorderWidth = 0,
+            CornerRadius = 12,
+            Opacity = 0,
+            InputTransparent = true
         };
         _backButton.Clicked += (_, _) => ShowCategories();
 
@@ -66,92 +67,74 @@ public partial class NodeSearchWindow : ContentView
 
         var titleRow = new Grid
         {
-            ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star) }
+            ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star) },
+            ColumnSpacing = 4
         };
         titleRow.Add(_backButton, 0, 0);
         titleRow.Add(_titleLabel, 1, 0);
 
-        _searchBox = new SearchBar
+        // ── 搜索框（Entry 代替 SearchBar，避免原生控件白底问题） ──
+        // 颜色由全局 Entry 样式 + WinUI TextControl* 资源统一控制
+        _searchBox = new Entry
         {
-            BackgroundColor = Color.FromArgb("#1E1E1E"),
-            TextColor = Color.FromArgb("#CCC"),
-            CancelButtonColor = Color.FromArgb("#89DCEB"),
             Placeholder = "搜索节点...",
-            PlaceholderColor = Color.FromArgb("#666"),
-            FontSize = 13
+            HeightRequest = 30,
+            ClearButtonVisibility = ClearButtonVisibility.WhileEditing
         };
         _searchBox.TextChanged += (_, _) => FilterView();
 
-        var topPanel = new VerticalStackLayout { Spacing = 6 };
+        var topPanel = new VerticalStackLayout { Spacing = 8 };
         topPanel.Add(titleRow);
         topPanel.Add(_searchBox);
 
-        _categoryList = new CollectionView
+        // ── 列表区域：ScrollView + BindableLayout（确保滚动手势可靠） ──
+        _itemContainer = new VerticalStackLayout { Spacing = 1 };
+        var scrollView = new ScrollView
         {
+            Content = _itemContainer,
             BackgroundColor = Colors.Transparent,
-            SelectionMode = SelectionMode.Single
+            VerticalScrollBarVisibility = ScrollBarVisibility.Default
         };
-        _categoryList.SelectionChanged += CategoryList_SelectionChanged;
-        _categoryList.ItemTemplate = new DataTemplate(() =>
-        {
-            var label = new Label { FontSize = 13, TextColor = Color.FromArgb("#CCC"), Padding = new Thickness(10, 7) };
-            label.SetBinding(Label.TextProperty, ".");
-            return label;
-        });
 
-        _nodeList = new CollectionView
-        {
-            BackgroundColor = Colors.Transparent,
-            SelectionMode = SelectionMode.Single,
-            IsVisible = false
-        };
-        _nodeList.SelectionChanged += NodeList_SelectionChanged;
-        _nodeList.ItemTemplate = new DataTemplate(() =>
-        {
-            var layout = new HorizontalStackLayout { Spacing = 8, Padding = new Thickness(10, 6) };
-            var dot = new BoxView { WidthRequest = 8, HeightRequest = 8, CornerRadius = 4 };
-            dot.SetBinding(BoxView.ColorProperty, "Color");
-            var name = new Label { FontSize = 13, TextColor = Color.FromArgb("#CCC"), VerticalTextAlignment = TextAlignment.Center };
-            name.SetBinding(Label.TextProperty, "DisplayName");
-            layout.Add(dot);
-            layout.Add(name);
-            return layout;
-        });
-
+        // ── 状态栏 ──
         _statusLabel = new Label
         {
-            TextColor = Color.FromArgb("#666"),
+            TextColor = Color.FromArgb("#7A7A7A"),
             FontSize = 11,
-            Padding = new Thickness(12, 4)
+            Padding = new Thickness(4, 6, 4, 0)
         };
 
-        _rootGrid = new Grid
+        var rootGrid = new Grid
         {
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
                 new RowDefinition(GridLength.Auto)
-            }
+            },
+            RowSpacing = 6
         };
-        _rootGrid.Add(topPanel, 0, 0);
-
-        var contentGrid = new Grid();
-        contentGrid.Add(_categoryList);
-        contentGrid.Add(_nodeList);
-        _rootGrid.Add(contentGrid, 0, 1);
-        _rootGrid.Add(_statusLabel, 0, 2);
+        rootGrid.Add(topPanel, 0, 0);
+        rootGrid.Add(scrollView, 0, 1);
+        rootGrid.Add(_statusLabel, 0, 2);
 
         var border = new Border
         {
-            Content = _rootGrid,
-            BackgroundColor = Color.FromArgb("#2D2D2D"),
-            Stroke = Color.FromArgb("#555"),
+            Content = rootGrid,
+            BackgroundColor = Color.FromArgb("#2B2B2B"),
+            Stroke = Color.FromArgb("#4A4A52"),
             StrokeThickness = 1,
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
-            Padding = new Thickness(8),
+            Padding = new Thickness(10),
             WidthRequest = 300,
-            HeightRequest = 400
+            HeightRequest = 400,
+            Shadow = new Shadow
+            {
+                Brush = new SolidColorBrush(Colors.Black),
+                Opacity = 0.55f,
+                Radius = 24,
+                Offset = new Point(0, 8)
+            }
         };
 
         // 拦截 tap 事件，防止冒泡到 overlay 层导致窗口关闭
@@ -161,58 +144,47 @@ public partial class NodeSearchWindow : ContentView
 
         Content = border;
         ShowCategories();
+
+        // 弹窗打开后自动聚焦搜索框
+        Loaded += async (_, _) =>
+        {
+            await Task.Delay(80);
+            _searchBox.Focus();
+        };
     }
 
     private void ShowCategories()
     {
         _selectedCategory = null;
         _titleLabel.Text = "选择分类";
-        _backButton.IsVisible = false;
-        _categoryList.IsVisible = true;
-        _nodeList.IsVisible = false;
+        _backButton.Opacity = 0;
+        _backButton.InputTransparent = true;
         _searchBox.Text = "";
         FilterView();
-    }
-
-    private void CategoryList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_categoryList.SelectedItem is string category)
-            EnterCategory(category);
-        // 忽略空选择（防止 CollectionView 清除选择时误关窗口）
     }
 
     private void EnterCategory(string category)
     {
         _selectedCategory = category;
         _titleLabel.Text = category;
-        _backButton.IsVisible = true;
-        _categoryList.IsVisible = false;
-        _nodeList.IsVisible = true;
+        _backButton.Opacity = 1;
+        _backButton.InputTransparent = false;
         _searchBox.Text = "";
         FilterView();
     }
 
-    private void NodeList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_nodeList.SelectedItem is NodeEntry entry)
-        {
-            _onSelected?.Invoke(entry.Descriptor.TypeId);
-            RequestClose?.Invoke();
-        }
-    }
-
     private void FilterView()
     {
+        _itemContainer.Clear();
         var text = _searchBox.Text;
 
         if (!string.IsNullOrEmpty(text))
         {
-            _categoryList.IsVisible = false;
-            _nodeList.IsVisible = true;
             var nodes = _allNodes
                 .Where(n => n.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            _nodeList.ItemsSource = nodes;
+            foreach (var node in nodes)
+                _itemContainer.Add(CreateNodeItem(node));
             _statusLabel.Text = nodes.Count > 0
                 ? $"{nodes.Count} 个节点 · 点击创建"
                 : "无匹配节点";
@@ -221,24 +193,98 @@ public partial class NodeSearchWindow : ContentView
 
         if (_selectedCategory == null)
         {
-            _categoryList.IsVisible = true;
-            _nodeList.IsVisible = false;
             var categories = _byCategory.Keys.OrderBy(k => k).ToList();
-            _categoryList.ItemsSource = categories;
+            foreach (var category in categories)
+                _itemContainer.Add(CreateCategoryItem(category));
             _statusLabel.Text = categories.Count > 0
                 ? $"{categories.Count} 个分类 · 点击进入"
                 : "无分类";
         }
         else
         {
-            _categoryList.IsVisible = false;
-            _nodeList.IsVisible = true;
             var nodes = _byCategory[_selectedCategory];
-            _nodeList.ItemsSource = nodes;
+            foreach (var node in nodes)
+                _itemContainer.Add(CreateNodeItem(node));
             _statusLabel.Text = nodes.Count > 0
                 ? $"{nodes.Count} 个节点 · 点击创建"
                 : "无节点";
         }
+    }
+
+    // ── 列表项构建（带悬停高亮） ──
+
+    private View CreateCategoryItem(string category)
+    {
+        var nameLabel = new Label
+        {
+            Text = category,
+            FontSize = 13,
+            TextColor = Color.FromArgb("#E0E0E0"),
+            VerticalTextAlignment = TextAlignment.Center
+        };
+
+        var grid = new Grid
+        {
+            Padding = new Thickness(10, 8),
+            BackgroundColor = Colors.Transparent
+        };
+        grid.Add(nameLabel, 0, 0);
+
+        AttachItemInteraction(grid, () => EnterCategory(category));
+        return grid;
+    }
+
+    private View CreateNodeItem(NodeEntry entry)
+    {
+        var dot = new Border
+        {
+            WidthRequest = 8,
+            HeightRequest = 8,
+            BackgroundColor = entry.Color,
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 4 },
+            VerticalOptions = LayoutOptions.Center
+        };
+        var nameLabel = new Label
+        {
+            Text = entry.DisplayName,
+            FontSize = 13,
+            TextColor = Color.FromArgb("#E0E0E0"),
+            VerticalTextAlignment = TextAlignment.Center,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            MaxLines = 1
+        };
+
+        var layout = new HorizontalStackLayout
+        {
+            Spacing = 10,
+            Padding = new Thickness(10, 7),
+            BackgroundColor = Colors.Transparent
+        };
+        layout.Add(dot);
+        layout.Add(nameLabel);
+
+        var container = new Grid { BackgroundColor = Colors.Transparent };
+        container.Add(layout);
+
+        AttachItemInteraction(container, () =>
+        {
+            _onSelected?.Invoke(entry.Descriptor.TypeId);
+            RequestClose?.Invoke();
+        });
+        return container;
+    }
+
+    /// <summary>为列表项附加悬停高亮 + 点击行为。</summary>
+    private static void AttachItemInteraction(View item, Action onClick)
+    {
+        var pointer = new PointerGestureRecognizer();
+        pointer.PointerEntered += (_, _) => item.BackgroundColor = Color.FromArgb("#3A3A42");
+        pointer.PointerExited += (_, _) => item.BackgroundColor = Colors.Transparent;
+        item.GestureRecognizers.Add(pointer);
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) => onClick();
+        item.GestureRecognizers.Add(tap);
     }
 }
 
